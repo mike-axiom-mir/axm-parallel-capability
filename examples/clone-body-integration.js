@@ -31,9 +31,9 @@ const maintainability = await runCloneCandidate({
   stateRef,
   authority,
   evidenceRefs: ['inspection:maintainability'],
-  tests: [{ id: 'mode-remains-explicit', test: ({ state }) => state.config.mode === 'safe' }],
+  tests: [{ id: 'strategy-explicit', test: ({ state }) => state.config.strategy === 'bounded' }],
   work: ({ state }) => {
-    state.config.mode = 'safe';
+    state.config.strategy = 'bounded';
   }
 });
 
@@ -47,7 +47,7 @@ const integration = await buildIntegrationClone({
   evidenceRefs: ['integration:harness'],
   tests: [
     { id: 'combined-runtime', test: ({ state }) => state.metrics.baselineMs <= 12 },
-    { id: 'combined-mode', test: ({ state }) => state.config.mode === 'safe' }
+    { id: 'combined-strategy', test: ({ state }) => state.config.strategy === 'bounded' }
   ]
 });
 
