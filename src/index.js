@@ -6,8 +6,11 @@ export {
 
 export {
   createMergePlan,
-  commitMerge,
-  rollbackMerge,
   detectMergeConflicts,
   hashState
 } from './merge.js';
+
+export {
+  commitMerge,
+  rollbackMerge
+} from './merge-gate.js';
