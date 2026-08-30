@@ -58,20 +58,36 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 - protected-body planning adds exact source-content binding even when an external `stateRef` is reused;
 - a separate explicit public merge commit is still required to cross the protected boundary.
 
-These claims are scoped to the Node harness and the documented state grammar. v0.3 clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
+#### v0.4 scheduler-native Creation Fabric cycle
 
-See `docs/MERGE_CONTRACT_V0_2.md` and `docs/CLONE_BODY_CONTRACT_V0_3.md` for the narrower contracts and limitations.
+- declared candidate work contracts are converted into scheduler tasks automatically;
+- clone candidate tasks use the same bounded worker/resource scheduling layer as v0.1;
+- the integration task is generated automatically and depends on all declared candidate tasks;
+- candidate failures remain candidate evidence rather than automatically becoming scheduler failures;
+- successful independent candidates may continue into integration when another experiment fails;
+- candidate order remains tied to declared order rather than completion timing;
+- candidate work receives the scheduler `AbortSignal` for cooperative cancellation;
+- creation sessions expose pause/resume/cancel/snapshot/checkpoint behavior through the scheduler;
+- checkpoint reuse can avoid rerunning completed candidate and integration work;
+- candidate authority defaults to `WRITE-SANDBOX`, not `COMMIT-CANDIDATE`;
+- protected-body content is hashed at cycle start and checked again at completion for drift;
+- an integration candidate is converted into a protected-body plan only after integration tests;
+- a ready Creation Fabric cycle still requires the separate public `commitMerge(...)` call;
+- the creation receipt keeps source lineage through hashes rather than silently duplicating another full source-body snapshot.
+
+These claims are scoped to the Node harness and the documented state grammar. v0.3/v0.4 clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of hostile-code sandboxing, VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
+
+See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, and `docs/CREATION_FABRIC_CONTRACT_V0_4.md` for the narrower contracts and limitations.
 
 ### Still proposal / not yet proven here
 
 - arbitrary capability discovery/spawning;
-- scheduler-native automatic clone spawning;
+- deterministic generation/decomposition of candidate work contracts from a higher-level creation goal;
 - adaptive CPU/disk/event-loop backoff;
 - persistent checkpoint storage;
 - durable external clone/rollback storage;
 - generic source-code / filesystem / database merge adapters;
 - automatic repair of held merge conflicts;
-- Creation Fabric orchestration using the clone layer;
 - Grammar Glass survivor loops;
 - Walmi temporary specialist spawning;
 - game/world-state orchestration;
@@ -103,9 +119,10 @@ npm run demo:inspection
 npm run demo:selection
 npm run demo:merge
 npm run demo:clone
+npm run demo:creation
 ```
 
-The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit.
+The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit. `demo:creation` demonstrates scheduler-generated clone tasks -> automatic integration dependency -> protected-body plan -> explicit commit.
 
 ## Bounded scheduler API
 
@@ -220,12 +237,66 @@ const committed = commitMerge({
 
 `WRITE-SANDBOX` allows work inside the clone. `COMMIT-CANDIDATE` only allows the result to be considered by merge predicates. Neither is automatic merge authority.
 
+## Creation Fabric API
+
+```js
+import { CreationFabric, commitMerge } from '@axm/parallel-capability';
+
+const fabric = new CreationFabric({ limits: { workers: 3 } });
+const cycle = fabric.start({
+  runId: 'creation-1',
+  goal: 'Explore bounded candidate improvements',
+  state: protectedBody,
+  stateRef: 'body:v1',
+  rollbackRef: 'body:v0',
+  candidates: [
+    {
+      id: 'performance',
+      role: 'PERFORMANCE',
+      authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
+      evidenceRefs: ['benchmark:1'],
+      tests: [{ id: 'candidate-target', test: ({ state }) => state.metrics.runtimeMs <= 12 }],
+      work: ({ state }) => {
+        state.metrics.runtimeMs = 12;
+      }
+    },
+    {
+      id: 'usability',
+      role: 'USABILITY',
+      authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
+      evidenceRefs: ['inspection:ui'],
+      tests: [{ id: 'ui-target', test: ({ state }) => state.ui.compact === true }],
+      work: ({ state }) => {
+        state.ui.compact = true;
+      }
+    }
+  ],
+  integration: {
+    evidenceRefs: ['integration:harness'],
+    tests: [{ id: 'combined-target', test: ({ state }) => state.metrics.runtimeMs <= 12 && state.ui.compact }]
+  }
+});
+
+const receipt = await cycle.result;
+
+// Still no protected-state mutation.
+if (receipt.status === 'READY_FOR_EXPLICIT_COMMIT') {
+  const committed = commitMerge({
+    state: protectedBody,
+    currentStateRef: 'body:v1',
+    plan: receipt.bodyPlan.mergePlan
+  });
+}
+```
+
+The candidate work contracts are currently caller-declared. v0.4 automatically schedules, bounds, gathers, integrates, verifies, checkpoints and prepares them for the protected merge gate; it does not yet invent the candidate graph from an arbitrary goal.
+
 ## Design boundary
 
 A lane is a bounded work contract, not automatically a persistent agent. Same-body coordination never implies unlimited write or merge authority.
 
 The repository now demonstrates a reversible sequence for its bounded JSON-state harness:
 
-`parallel work -> clone candidates -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
+`creation request -> scheduler-generated clone tasks -> parallel candidate bodies -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
 
-That is still a prototype grammar, not universal transaction infrastructure.
+That is still a prototype grammar, not universal transaction or autonomous creation infrastructure.
