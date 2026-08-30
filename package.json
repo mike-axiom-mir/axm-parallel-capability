@@ -1,7 +1,7 @@
 {
   "name": "@axm/parallel-capability",
-  "version": "0.4.0",
-  "description": "Deterministic bounded capability lanes with evidence-bound merge, clone-body integration, and scheduler-native creation cycles for AXM systems",
+  "version": "0.5.0",
+  "description": "Deterministic bounded capability lanes with decomposition, evidence-bound merge, clone-body integration, and scheduler-native creation cycles for AXM systems",
   "type": "module",
   "main": "src/index.js",
   "exports": "./src/index.js",
@@ -12,7 +12,8 @@
     "demo:selection": "node examples/candidate-selection.js",
     "demo:merge": "node examples/deterministic-merge.js",
     "demo:clone": "node examples/clone-body-integration.js",
-    "demo:creation": "node examples/creation-cycle.js"
+    "demo:creation": "node examples/creation-cycle.js",
+    "demo:decomposition": "node examples/decomposition-cycle.js"
   },
   "engines": {
     "node": ">=20"
