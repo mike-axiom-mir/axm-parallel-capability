@@ -14,42 +14,64 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 
 ### Implemented in this repository, Lane 1
 
-The generic JavaScript fabric now provides:
+#### v0.1 bounded orchestration
 
 - bounded capability lanes;
-- a dependency-aware task graph;
+- dependency-aware task graph;
 - declared resource-token limits;
 - explicit run/task/lane identifiers;
 - lane receipts;
 - deterministic output ordering by declared task plan;
-- pause/resume;
-- cancel with `AbortSignal` propagation;
-- checkpoint export and exact `runId` + `stateRef` binding on reuse;
+- pause/resume/cancel;
+- checkpoint export and exact `runId` + `stateRef` binding;
 - failed-dependency propagation;
 - contradiction preservation;
-- proposed-change conflict detection;
-- deterministic candidate selection against explicit predicates;
+- proposed-change conflict reporting;
+- deterministic candidate selection against explicit predicates.
+
+#### v0.2 deterministic JSON-state merge contract
+
 - explicit merge planning separate from commit authority;
-- state-version, authority, evidence, failure, status, and test predicates for merge candidates;
+- state-version, authority, evidence, failure, status, and test predicates;
 - exact-path and parent/child-path conflict detection;
 - deterministic operation ordering and identical-proposal coalescing;
-- JSON-compatible in-memory `set` / `delete` state commits;
+- JSON-compatible in-memory `set` / `delete` commits;
 - optional operation preconditions;
-- merge receipts with source/result state hashes;
+- merge receipts with source/result hashes;
+- merge-plan integrity checking;
 - rollback tokens with exact source snapshots;
-- rollback refusal when the committed state has drifted since the merge.
+- rollback-token integrity checking;
+- rollback refusal after committed-state drift.
 
-These claims are scoped to this implementation and its Node test harness. The merge layer is a **generic JSON-state merge prototype under a deliberately small operation grammar**, not a claim that arbitrary source trees, databases, binaries, worlds, or filesystems can already be merged generically.
+#### v0.3 disposable clone bodies + integration clone
+
+- candidate work receives a writable disposable copy rather than the protected body;
+- independent clones can diverge without sharing mutations;
+- source-to-clone diffs are generated deterministically;
+- generated operations carry source-value/existence preconditions;
+- clone candidates bind to an exact source-state content hash;
+- failed clone work remains a failed candidate;
+- compatible candidates can merge into a disposable integration clone;
+- conflicts can hold the integration run instead of touching protected state;
+- integration tests gate `VALID_IN_HARNESS` status;
+- an integration result is only a new `COMMIT-CANDIDATE`, not a protected-state mutation;
+- protected-body planning adds exact source-content binding even when an external `stateRef` is reused;
+- a separate explicit public merge commit is still required to cross the protected boundary.
+
+These claims are scoped to the Node harness and the documented state grammar. v0.3 clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
+
+See `docs/MERGE_CONTRACT_V0_2.md` and `docs/CLONE_BODY_CONTRACT_V0_3.md` for the narrower contracts and limitations.
 
 ### Still proposal / not yet proven here
 
 - arbitrary capability discovery/spawning;
+- scheduler-native automatic clone spawning;
 - adaptive CPU/disk/event-loop backoff;
-- persistent filesystem checkpoint storage;
-- external/persistent rollback snapshot storage;
+- persistent checkpoint storage;
+- durable external clone/rollback storage;
 - generic source-code / filesystem / database merge adapters;
-- disposable clone-body integration;
 - automatic repair of held merge conflicts;
+- Creation Fabric orchestration using the clone layer;
 - Grammar Glass survivor loops;
 - Walmi temporary specialist spawning;
 - game/world-state orchestration;
@@ -80,9 +102,10 @@ npm run demo:calculation
 npm run demo:inspection
 npm run demo:selection
 npm run demo:merge
+npm run demo:clone
 ```
 
-The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 explicit plan -> commit -> receipt -> rollback flow.
+The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit.
 
 ## Bounded scheduler API
 
@@ -147,8 +170,62 @@ const restored = rollbackMerge({
 
 By default a candidate must bind to the exact state version, carry `COMMIT-CANDIDATE` authority, provide evidence, report no failures, and have at least one passing test with all declared tests passing. Conflicting candidates are held by default. An explicit `merge-nonconflicting` policy may commit independent accepted candidates while keeping conflicting candidates unresolved and traceable.
 
+## Clone-body API
+
+```js
+import {
+  runCloneCandidate,
+  buildIntegrationClone,
+  createBodyCommitPlan,
+  commitMerge
+} from '@axm/parallel-capability';
+
+const candidate = await runCloneCandidate({
+  id: 'performance',
+  state: protectedBody,
+  stateRef: 'body:v1',
+  authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
+  evidenceRefs: ['benchmark:1'],
+  tests: [{ id: 'target', test: ({ state }) => state.config.cacheMB === 128 }],
+  work: ({ state }) => {
+    state.config.cacheMB = 128;
+  }
+});
+
+const integration = await buildIntegrationClone({
+  integrationId: 'integration-1',
+  runId: 'integration-run-1',
+  state: protectedBody,
+  stateRef: 'body:v1',
+  rollbackRef: 'body:v1',
+  candidates: [candidate],
+  tests: [{ id: 'integration-target', test: ({ state }) => state.config.cacheMB === 128 }]
+});
+
+const bodyPlan = createBodyCommitPlan({
+  runId: 'protected-plan-1',
+  state: protectedBody,
+  stateRef: 'body:v1',
+  rollbackRef: 'body:v1',
+  candidates: [integration.candidate]
+});
+
+// Protected body is still untouched here.
+const committed = commitMerge({
+  state: protectedBody,
+  currentStateRef: 'body:v1',
+  plan: bodyPlan.mergePlan
+});
+```
+
+`WRITE-SANDBOX` allows work inside the clone. `COMMIT-CANDIDATE` only allows the result to be considered by merge predicates. Neither is automatic merge authority.
+
 ## Design boundary
 
 A lane is a bounded work contract, not automatically a persistent agent. Same-body coordination never implies unlimited write or merge authority.
 
-No silent merge means more than producing a receipt after mutation. The v0.2 API first produces an inspectable merge plan, and only a separate explicit commit call may cross the state boundary.
+The repository now demonstrates a reversible sequence for its bounded JSON-state harness:
+
+`parallel work -> clone candidates -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
+
+That is still a prototype grammar, not universal transaction infrastructure.
