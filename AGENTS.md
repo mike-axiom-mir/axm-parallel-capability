@@ -86,14 +86,14 @@ The useful capability is the coordination grammar around parallel work.
 
 Same body does not mean unlimited authority.
 
-Every lane must have an explicit authority class. Prefer bounded forms such as:
+Every lane must have an explicit authority class. Preserve the founding source names:
 
 - `READ`
 - `PROPOSE`
-- `WRITE_SANDBOX`
-- `COMMIT_CANDIDATE`
+- `WRITE-SANDBOX`
+- `COMMIT-CANDIDATE`
 - `OBSERVE`
-- `EXECUTE_TOOL`
+- `EXECUTE-TOOL`
 
 A lane may never silently gain:
 
