@@ -1,0 +1,17 @@
+{
+  "name": "@axm/parallel-capability",
+  "version": "0.1.0",
+  "description": "Deterministic bounded capability-lane orchestration for AXM systems",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": "./src/index.js",
+  "scripts": {
+    "test": "node --test",
+    "demo:calculation": "node examples/parallel-calculation.js",
+    "demo:inspection": "node examples/software-inspection.js",
+    "demo:selection": "node examples/candidate-selection.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
