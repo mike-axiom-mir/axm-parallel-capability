@@ -32,7 +32,7 @@ export function createDecompositionPlan({
   const normalizedGoal = normalizeGoal(goal);
   const normalizedBodyMap = normalizeBodyMap(bodyMap);
   const normalizedConstraints = normalizeConstraints(constraints);
-  const normalizedCapabilities = normalizeCapabilities(capabilities, normalizedBodyMap, normalizedConstraints);
+  const normalizedCapabilities = normalizeCapabilities(capabilities);
   assertDependencyReferences(normalizedCapabilities);
 
   const eligibility = normalizedCapabilities.map((capability) => evaluateCapabilityEligibility({
@@ -146,7 +146,7 @@ export function createDecompositionPlan({
     stateRef: String(stateRef),
     rollbackRef: String(rollbackRef),
     goal: stripExecutableGoal(normalizedGoal),
-    bodyMap: normalizedBodyMap,
+    bodyMap: { id: normalizedBodyMap.id, areas: normalizedBodyMap.areas },
     constraints: stripExecutableConstraints(normalizedConstraints),
     selectedCapabilities: selectedMetadata,
     coverage,
@@ -353,7 +353,7 @@ function normalizeBodyMap(bodyMap) {
   };
 }
 
-function normalizeCapabilities(capabilities, bodyMap, constraints) {
+function normalizeCapabilities(capabilities) {
   if (!Array.isArray(capabilities) || capabilities.length === 0) throw new TypeError('capabilities must be a non-empty array');
   const seen = new Set();
   return capabilities.map((capability, index) => {
@@ -480,7 +480,7 @@ function detectDependencyCycle(capabilities) {
     visited.add(id);
     return null;
   }
-  for (const capability of capabilities.sort(compareCapabilities)) {
+  for (const capability of [...capabilities].sort(compareCapabilities)) {
     const cycle = visit(capability.id);
     if (cycle) return cycle;
   }
