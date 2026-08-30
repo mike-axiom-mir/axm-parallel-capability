@@ -14,3 +14,10 @@ export {
   commitMerge,
   rollbackMerge
 } from './merge-gate.js';
+
+export {
+  buildIntegrationClone,
+  createBodyCommitPlan,
+  diffJsonState,
+  runCloneCandidate
+} from './clone-body.js';
