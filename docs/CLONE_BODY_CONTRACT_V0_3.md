@@ -10,20 +10,20 @@ The current proof is scoped to JSON-compatible in-memory plain-object root state
 
 ## Purpose
 
-The clone-body layer gives experimental capability lanes broad mutation freedom inside disposable copies while keeping the protected source body unchanged.
+The clone-body layer gives experimental capability lanes broad mutation freedom inside disposable copies while keeping mutation through the supplied work context off the protected source body.
 
 The intended flow is:
 
 `protected body -> disposable candidate clones -> deterministic diffs -> merge predicates/conflicts -> disposable integration clone -> integration tests -> integration COMMIT-CANDIDATE -> protected-body plan -> explicit commit`
 
-A successful experiment does not mutate protected state by itself.
+A successful experiment does not mutate protected state through the clone API by itself.
 
 ## Candidate clone contract
 
 `runCloneCandidate(...)`:
 
 - clones the supplied source body before work starts;
-- gives the work function the writable clone, never the supplied protected object;
+- gives the work function a writable clone instead of the supplied protected object through its context;
 - records the exact source-state SHA-256 hash;
 - runs declared post-work tests against copies of the clone state;
 - preserves work failures instead of hiding them;
@@ -92,8 +92,8 @@ That function returns a new state object. The supplied protected object is not m
 
 The current harness tests that:
 
-- clone work cannot mutate the protected source object;
-- independent clones can diverge without observing each other's mutations;
+- work using the supplied clone context mutates the disposable copy while the supplied protected source remains unchanged;
+- independent clones can diverge without observing each other's clone-context mutations;
 - clone diffs are deterministic and source-preconditioned;
 - failed clone work remains a failed candidate and cannot enter integration;
 - compatible candidates can combine inside an integration clone;
@@ -122,13 +122,15 @@ This is not yet:
 
 Clone isolation here means independent in-memory JSON-compatible copies inside the current JavaScript process.
 
+The work callback is ordinary code in that same process. The library does not provide a security sandbox around hostile or malicious callbacks. If callback code already holds some external reference, global, filesystem capability, or other authority outside the supplied clone context, v0.3 does not prevent that code from using it. The tested boundary is copy isolation and explicit merge authority, not capability containment of arbitrary JavaScript.
+
 ## Security / integrity boundary
 
 SHA-256 values in this layer are deterministic integrity/content bindings, not authentication. No secret key is involved.
 
 Clone-body safety currently comes from:
 
-- copy isolation;
+- copy isolation for the state supplied through the clone API;
 - content lineage hashes;
 - explicit authority labels;
 - tests;
