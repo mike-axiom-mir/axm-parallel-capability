@@ -21,3 +21,8 @@ export {
   diffJsonState,
   runCloneCandidate
 } from './clone-body.js';
+
+export {
+  CreationFabric,
+  runCreationCycle
+} from './creation-fabric.js';
