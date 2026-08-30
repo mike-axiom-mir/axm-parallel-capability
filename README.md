@@ -14,7 +14,7 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 
 ### Implemented in this repository, Lane 1
 
-The initial generic JavaScript fabric now provides:
+The generic JavaScript fabric now provides:
 
 - bounded capability lanes;
 - a dependency-aware task graph;
@@ -29,18 +29,27 @@ The initial generic JavaScript fabric now provides:
 - contradiction preservation;
 - proposed-change conflict detection;
 - deterministic candidate selection against explicit predicates;
-- rollback references in run receipts.
+- explicit merge planning separate from commit authority;
+- state-version, authority, evidence, failure, status, and test predicates for merge candidates;
+- exact-path and parent/child-path conflict detection;
+- deterministic operation ordering and identical-proposal coalescing;
+- JSON-compatible in-memory `set` / `delete` state commits;
+- optional operation preconditions;
+- merge receipts with source/result state hashes;
+- rollback tokens with exact source snapshots;
+- rollback refusal when the committed state has drifted since the merge.
 
-These claims are scoped to this implementation and its test harness. They are **not** claims of production-scale performance or a completed generic merge fabric.
+These claims are scoped to this implementation and its Node test harness. The merge layer is a **generic JSON-state merge prototype under a deliberately small operation grammar**, not a claim that arbitrary source trees, databases, binaries, worlds, or filesystems can already be merged generically.
 
 ### Still proposal / not yet proven here
 
 - arbitrary capability discovery/spawning;
 - adaptive CPU/disk/event-loop backoff;
 - persistent filesystem checkpoint storage;
-- generic state mutation/merge;
+- external/persistent rollback snapshot storage;
+- generic source-code / filesystem / database merge adapters;
 - disposable clone-body integration;
-- automatic rollback execution;
+- automatic repair of held merge conflicts;
 - Grammar Glass survivor loops;
 - Walmi temporary specialist spawning;
 - game/world-state orchestration;
@@ -70,15 +79,12 @@ Requires Node.js 20 or newer.
 npm run demo:calculation
 npm run demo:inspection
 npm run demo:selection
+npm run demo:merge
 ```
 
-The demos cover the three initial builder-handoff targets:
+The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 explicit plan -> commit -> receipt -> rollback flow.
 
-1. deterministic parallel calculation;
-2. parallel software inspection;
-3. candidate generation plus deterministic selection.
-
-## Minimal API
+## Bounded scheduler API
 
 ```js
 import { ParallelCapabilityFabric } from '@axm/parallel-capability';
@@ -98,7 +104,7 @@ const session = fabric.start({
       capabilityId: 'example.inspect',
       authority: ['READ', 'OBSERVE'],
       resources: { workers: 1, memoryMB: 128 },
-      run: async ({ signal }) => ({
+      run: async () => ({
         output: { ok: true },
         evidenceRefs: ['input:a'],
         proposedChanges: []
@@ -107,13 +113,42 @@ const session = fabric.start({
   ]
 });
 
-session.pause();
-session.resume();
 const receipt = await session.result;
 ```
+
+## Merge API
+
+Merge planning is intentionally separate from committing:
+
+```js
+import { createMergePlan, commitMerge, rollbackMerge } from '@axm/parallel-capability';
+
+const plan = createMergePlan({
+  runId: 'run-001',
+  stateRef: 'state:v1',
+  rollbackRef: 'state:v0',
+  candidates: laneReceipts
+});
+
+// No state changed merely because a plan exists.
+const committed = commitMerge({
+  state,
+  currentStateRef: 'state:v1',
+  plan,
+  resultingStateRef: 'state:v2'
+});
+
+const restored = rollbackMerge({
+  state: committed.state,
+  currentStateRef: committed.stateRef,
+  rollbackToken: committed.rollbackToken
+});
+```
+
+By default a candidate must bind to the exact state version, carry `COMMIT-CANDIDATE` authority, provide evidence, report no failures, and have at least one passing test with all declared tests passing. Conflicting candidates are held by default. An explicit `merge-nonconflicting` policy may commit independent accepted candidates while keeping conflicting candidates unresolved and traceable.
 
 ## Design boundary
 
 A lane is a bounded work contract, not automatically a persistent agent. Same-body coordination never implies unlimited write or merge authority.
 
-The first implementation intentionally stops before generic state merge. Conflict detection and candidate selection exist so later merge work begins from explicit evidence instead of silently choosing a winner.
+No silent merge means more than producing a receipt after mutation. The v0.2 API first produces an inspectable merge plan, and only a separate explicit commit call may cross the state boundary.
