@@ -21,60 +21,70 @@ export class CreationFabric {
     const sourceState = structuredClone(spec.state);
     const sourceStateHash = hashState(sourceState);
     const candidateTaskIds = normalized.candidates.map((candidate) => `candidate:${candidate.id}`);
+    const taskIdByCandidateId = new Map(normalized.candidates.map((candidate, index) => [candidate.id, candidateTaskIds[index]]));
     const integrationTaskId = `integration:${normalized.integration.id}`;
 
-    const tasks = normalized.candidates.map((candidate, index) => ({
-      taskId: candidateTaskIds[index],
-      laneId: candidate.laneId,
-      capabilityId: candidate.capabilityId,
-      authority: candidate.authority,
-      resources: candidate.resources,
-      inputRefs: [`state:${normalized.stateRef}`, ...candidate.inputRefs],
-      run: async ({ signal }) => {
-        throwIfAborted(signal);
-        const cloneCandidate = await runCloneCandidate({
-          id: candidate.id,
-          laneId: candidate.laneId,
-          taskId: candidateTaskIds[index],
-          state: sourceState,
-          stateRef: normalized.stateRef,
-          authority: candidate.authority,
-          evidenceRefs: candidate.evidenceRefs,
-          tests: candidate.tests,
-          now: this.now,
-          work: async (cloneContext) => {
-            throwIfAborted(signal);
-            const result = await candidate.work(Object.freeze({
-              ...cloneContext,
-              signal,
-              goal: normalized.goal,
-              role: candidate.role
-            }));
-            throwIfAborted(signal);
-            return result;
-          }
-        });
-        throwIfAborted(signal);
+    const tasks = normalized.candidates.map((candidate, index) => {
+      const dependencyTaskIds = candidate.dependsOn.map((id) => taskIdByCandidateId.get(id));
+      return {
+        taskId: candidateTaskIds[index],
+        laneId: candidate.laneId,
+        capabilityId: candidate.capabilityId,
+        dependencies: dependencyTaskIds,
+        authority: candidate.authority,
+        resources: candidate.resources,
+        inputRefs: [`state:${normalized.stateRef}`, ...candidate.inputRefs, ...dependencyTaskIds],
+        run: async ({ dependencyOutputs, signal }) => {
+          throwIfAborted(signal);
+          const dependencyCandidates = Object.fromEntries(
+            candidate.dependsOn.map((id) => [id, structuredClone(dependencyOutputs[taskIdByCandidateId.get(id)] ?? null)])
+          );
+          const cloneCandidate = await runCloneCandidate({
+            id: candidate.id,
+            laneId: candidate.laneId,
+            taskId: candidateTaskIds[index],
+            state: sourceState,
+            stateRef: normalized.stateRef,
+            authority: candidate.authority,
+            evidenceRefs: candidate.evidenceRefs,
+            tests: candidate.tests,
+            now: this.now,
+            work: async (cloneContext) => {
+              throwIfAborted(signal);
+              const result = await candidate.work(Object.freeze({
+                ...cloneContext,
+                signal,
+                goal: normalized.goal,
+                role: candidate.role,
+                dependencyCandidates: Object.freeze(dependencyCandidates)
+              }));
+              throwIfAborted(signal);
+              return result;
+            }
+          });
+          throwIfAborted(signal);
 
-        // Candidate failure is domain evidence, not scheduler failure. The merge
-        // predicates decide whether the candidate may survive into integration.
-        return {
-          output: cloneCandidate,
-          evidenceRefs: cloneCandidate.evidenceRefs,
-          assumptions: cloneCandidate.assumptions,
-          unknowns: cloneCandidate.unknowns,
-          contradictions: cloneCandidate.contradictions,
-          testResults: cloneCandidate.testResults,
-          proposedChanges: cloneCandidate.changes,
-          metadata: {
-            creationCandidate: true,
-            candidateId: candidate.id,
-            candidateStatus: cloneCandidate.status,
-            role: candidate.role
-          }
-        };
-      }
-    }));
+          // Candidate failure is domain evidence, not scheduler failure. The merge
+          // predicates decide whether the candidate may survive into integration.
+          return {
+            output: cloneCandidate,
+            evidenceRefs: cloneCandidate.evidenceRefs,
+            assumptions: cloneCandidate.assumptions,
+            unknowns: cloneCandidate.unknowns,
+            contradictions: cloneCandidate.contradictions,
+            testResults: cloneCandidate.testResults,
+            proposedChanges: cloneCandidate.changes,
+            metadata: {
+              creationCandidate: true,
+              candidateId: candidate.id,
+              candidateStatus: cloneCandidate.status,
+              role: candidate.role,
+              dependsOn: [...candidate.dependsOn]
+            }
+          };
+        }
+      };
+    });
 
     tasks.push({
       taskId: integrationTaskId,
@@ -293,6 +303,7 @@ function normalizeCreationSpec(spec) {
       role: candidate.role == null ? null : String(candidate.role),
       laneId: String(candidate.laneId ?? id),
       capabilityId: String(candidate.capabilityId ?? 'axm.creation.clone-candidate'),
+      dependsOn: [...(candidate.dependsOn ?? [])].map(String),
       authority: [...(candidate.authority ?? ['WRITE-SANDBOX'])].map(String),
       resources: { workers: 1, ...(candidate.resources ?? {}) },
       inputRefs: [...(candidate.inputRefs ?? [])].map(String),
@@ -301,6 +312,14 @@ function normalizeCreationSpec(spec) {
       work: candidate.work
     };
   });
+
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+  for (const candidate of candidates) {
+    for (const dependency of candidate.dependsOn) {
+      if (!candidateIds.has(dependency)) throw new Error(`Creation candidate ${candidate.id} depends on unknown candidate ${dependency}`);
+      if (dependency === candidate.id) throw new Error(`Creation candidate ${candidate.id} cannot depend on itself`);
+    }
+  }
 
   const integration = spec.integration ?? {};
   const body = spec.body ?? {};
