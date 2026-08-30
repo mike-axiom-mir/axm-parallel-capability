@@ -62,10 +62,12 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 
 - declared candidate work contracts are converted into scheduler tasks automatically;
 - clone candidate tasks use the same bounded worker/resource scheduling layer as v0.1;
-- the integration task is generated automatically and depends on all declared candidate tasks;
+- candidate-to-candidate dependencies are supported without auto-applying dependency clone state;
+- completed dependency candidate receipts are available to downstream work as `dependencyCandidates`;
+- the integration task is generated automatically and depends on all candidate tasks;
 - candidate failures remain candidate evidence rather than automatically becoming scheduler failures;
 - successful independent candidates may continue into integration when another experiment fails;
-- candidate order remains tied to declared order rather than completion timing;
+- candidate order remains tied to declared/topological order rather than completion timing;
 - candidate work receives the scheduler `AbortSignal` for cooperative cancellation;
 - creation sessions expose pause/resume/cancel/snapshot/checkpoint behavior through the scheduler;
 - checkpoint reuse can avoid rerunning completed candidate and integration work;
@@ -75,14 +77,34 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 - a ready Creation Fabric cycle still requires the separate public `commitMerge(...)` call;
 - the creation receipt keeps source lineage through hashes rather than silently duplicating another full source-body snapshot.
 
-These claims are scoped to the Node harness and the documented state grammar. v0.3/v0.4 clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of hostile-code sandboxing, VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
+#### v0.5 deterministic decomposition grammar
 
-See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, and `docs/CREATION_FABRIC_CONTRACT_V0_4.md` for the narrower contracts and limitations.
+- an explicit goal grammar uses exact requirement tokens rather than pretending arbitrary prose is deterministically understood;
+- body maps declare addressable state areas, explicit capability allowlists, and allowed authority classes;
+- capability descriptors declare provided tokens, dependencies, target body areas, authority, resources, evidence, tests, priority, solution pressure, and an `executorRef`;
+- required tokens are covered by a deterministic greedy rule: most uncovered tokens, then priority, then capability id;
+- optional exploration slots add explicitly requested alternative solution pressures;
+- capability dependencies are closed recursively and emitted as a topological candidate graph;
+- unresolved dependency cycles are held before scheduling;
+- effective authority is the intersection of capability request, body-area permission, and global constraints;
+- authority is never widened to make a graph executable;
+- undeclared or over-budget resource classes reject a capability before scheduling;
+- selected candidates receive a generated `decomposition-scope-boundary` test so out-of-scope clone writes fail the candidate gate;
+- missing evidence, domain tests, required-token coverage, integration tests, or candidate-count bounds can hold decomposition before any creation work starts;
+- a deterministic structural `planId` binds goal/body-map/constraint/selected-capability metadata and declared `executorRef` values;
+- executable functions are not treated as cryptographically identified by that plan hash;
+- a ready decomposition compiles directly into the v0.4 `CreationFabric` format;
+- a successful decomposed creation still stops at the protected-body plan and separate explicit `commitMerge(...)` gate.
+
+These claims are scoped to the Node harness and the documented state grammar. Clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of hostile-code sandboxing, VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
+
+See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, and `docs/DECOMPOSITION_GRAMMAR_V0_5.md` for the narrower contracts and limitations.
 
 ### Still proposal / not yet proven here
 
+- free-text goal parsing into trusted executable requirement tokens;
 - arbitrary capability discovery/spawning;
-- deterministic generation/decomposition of candidate work contracts from a higher-level creation goal;
+- a reusable external capability registry/body-map intake protocol;
 - adaptive CPU/disk/event-loop backoff;
 - persistent checkpoint storage;
 - durable external clone/rollback storage;
@@ -120,9 +142,10 @@ npm run demo:selection
 npm run demo:merge
 npm run demo:clone
 npm run demo:creation
+npm run demo:decomposition
 ```
 
-The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit. `demo:creation` demonstrates scheduler-generated clone tasks -> automatic integration dependency -> protected-body plan -> explicit commit.
+The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit. `demo:creation` demonstrates scheduler-generated clone tasks -> automatic integration dependency -> protected-body plan -> explicit commit. `demo:decomposition` demonstrates explicit goal/body/capability descriptors -> deterministic candidate graph -> Creation Fabric -> explicit commit.
 
 ## Bounded scheduler API
 
@@ -251,29 +274,26 @@ const cycle = fabric.start({
   rollbackRef: 'body:v0',
   candidates: [
     {
+      id: 'analyzer',
+      authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
+      evidenceRefs: ['inspection:1'],
+      tests: [{ id: 'analysis-ok', test: () => true }],
+      work: () => ({ metadata: { target: 12 } })
+    },
+    {
       id: 'performance',
-      role: 'PERFORMANCE',
+      dependsOn: ['analyzer'],
       authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
       evidenceRefs: ['benchmark:1'],
       tests: [{ id: 'candidate-target', test: ({ state }) => state.metrics.runtimeMs <= 12 }],
-      work: ({ state }) => {
-        state.metrics.runtimeMs = 12;
-      }
-    },
-    {
-      id: 'usability',
-      role: 'USABILITY',
-      authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
-      evidenceRefs: ['inspection:ui'],
-      tests: [{ id: 'ui-target', test: ({ state }) => state.ui.compact === true }],
-      work: ({ state }) => {
-        state.ui.compact = true;
+      work: ({ state, dependencyCandidates }) => {
+        state.metrics.runtimeMs = dependencyCandidates.analyzer.metadata.target;
       }
     }
   ],
   integration: {
     evidenceRefs: ['integration:harness'],
-    tests: [{ id: 'combined-target', test: ({ state }) => state.metrics.runtimeMs <= 12 && state.ui.compact }]
+    tests: [{ id: 'combined-target', test: ({ state }) => state.metrics.runtimeMs <= 12 }]
   }
 });
 
@@ -289,7 +309,57 @@ if (receipt.status === 'READY_FOR_EXPLICIT_COMMIT') {
 }
 ```
 
-The candidate work contracts are currently caller-declared. v0.4 automatically schedules, bounds, gathers, integrates, verifies, checkpoints and prepares them for the protected merge gate; it does not yet invent the candidate graph from an arbitrary goal.
+## Decomposition API
+
+v0.5 compiles an explicit deterministic goal grammar into the Creation Fabric format:
+
+```js
+import { runDecomposedCreation } from '@axm/parallel-capability';
+
+const { plan, creation } = await runDecomposedCreation({
+  runId: 'decompose-1',
+  state: protectedBody,
+  stateRef: 'body:v1',
+  rollbackRef: 'body:v0',
+  goal: {
+    id: 'cache-upgrade',
+    summary: 'Upgrade the cache policy',
+    requirements: [{ id: 'cache', token: 'cache-upgrade' }],
+    integrationTests: [
+      { id: 'cache-target', test: ({ state }) => state.config.cacheMB === 128 }
+    ]
+  },
+  bodyMap: {
+    id: 'body-map:cache',
+    areas: [{
+      id: 'config',
+      path: 'config',
+      allowedCapabilities: ['cache-builder'],
+      authorities: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE']
+    }]
+  },
+  capabilities: [{
+    id: 'cache-builder',
+    executorRef: 'cache-builder/v1',
+    provides: ['cache-upgrade'],
+    targetAreas: ['config'],
+    authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
+    resources: { workers: 1 },
+    evidenceRefs: ['benchmark:cache'],
+    tests: [{ id: 'bounded-cache', test: ({ state }) => state.config.cacheMB <= 256 }],
+    work: ({ state }) => {
+      state.config.cacheMB = 128;
+    }
+  }],
+  constraints: {
+    resourceBudget: { limits: { workers: 2 } }
+  }
+});
+```
+
+The human-readable `summary` is not the executable parser input. Exact requirement tokens, body-map permissions, capability descriptors, dependencies and constraints drive decomposition.
+
+`READY` means the explicit grammar produced a runnable Creation Fabric graph under the declared predicates. It does not mean the graph is globally optimal, semantically complete, or safe outside the documented harness.
 
 ## Design boundary
 
@@ -297,6 +367,6 @@ A lane is a bounded work contract, not automatically a persistent agent. Same-bo
 
 The repository now demonstrates a reversible sequence for its bounded JSON-state harness:
 
-`creation request -> scheduler-generated clone tasks -> parallel candidate bodies -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
+`explicit goal grammar -> deterministic candidate graph -> scheduler-generated clone tasks -> parallel candidate bodies -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
 
-That is still a prototype grammar, not universal transaction or autonomous creation infrastructure.
+That is still a prototype grammar, not universal transaction, general-language understanding, or autonomous creation infrastructure.
