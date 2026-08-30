@@ -26,3 +26,8 @@ export {
   CreationFabric,
   runCreationCycle
 } from './creation-fabric.js';
+
+export {
+  createDecompositionPlan,
+  runDecomposedCreation
+} from './decomposition.js';
