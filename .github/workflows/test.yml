@@ -19,3 +19,4 @@ jobs:
       - run: npm test
       - run: npm run demo:clone > /dev/null
       - run: npm run demo:creation > /dev/null
+      - run: npm run demo:decomposition > /dev/null
