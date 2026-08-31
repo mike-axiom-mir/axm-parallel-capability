@@ -1,0 +1,25 @@
+{
+  "name": "@axm/parallel-capability",
+  "version": "0.9.0",
+  "description": "Deterministic bounded capability lanes with evidence refresh/reverification, read-only GitHub evidence collection, external-source verification, registry intake, decomposition, evidence-bound merge, clone-body integration, and scheduler-native creation cycles for AXM systems",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": "./src/index.js",
+  "scripts": {
+    "test": "node --test",
+    "demo:calculation": "node examples/parallel-calculation.js",
+    "demo:inspection": "node examples/software-inspection.js",
+    "demo:selection": "node examples/candidate-selection.js",
+    "demo:merge": "node examples/deterministic-merge.js",
+    "demo:clone": "node examples/clone-body-integration.js",
+    "demo:creation": "node examples/creation-cycle.js",
+    "demo:decomposition": "node examples/decomposition-cycle.js",
+    "demo:registry": "node examples/registry-intake.js",
+    "demo:external": "node examples/discovery-buddy-external-adapter.js",
+    "demo:evidence": "node examples/github-evidence-collector.js",
+    "demo:refresh": "node examples/evidence-refresh.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
