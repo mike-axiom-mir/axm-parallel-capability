@@ -21,3 +21,4 @@ jobs:
       - run: npm run demo:creation > /dev/null
       - run: npm run demo:decomposition > /dev/null
       - run: npm run demo:registry > /dev/null
+      - run: npm run demo:external > /dev/null
