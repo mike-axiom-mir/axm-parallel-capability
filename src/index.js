@@ -31,3 +31,12 @@ export {
   createDecompositionPlan,
   runDecomposedCreation
 } from './decomposition.js';
+
+export {
+  CapabilityRegistry,
+  createRegisteredDecompositionPlan,
+  createRegistryBundle,
+  runRegisteredCreation,
+  validateBodyMapManifest,
+  validateCapabilityManifest
+} from './registry.js';
