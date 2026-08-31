@@ -311,7 +311,10 @@ function addRefStabilityRequirement(claim) {
   if (!claim || typeof claim !== 'object' || Array.isArray(claim)) {
     throw new TypeError('claim must be an object');
   }
-  const requirements = Array.isArray(claim.requirements) ? [...claim.requirements] : [];
+  if (!Array.isArray(claim.requirements) || claim.requirements.length === 0) {
+    throw new TypeError('claim.requirements must contain source/execution evidence before freshness is added');
+  }
+  const requirements = [...claim.requirements];
   if (!requirements.some((item) => item?.observationId === DEFAULT_REF_OBSERVATION_ID)) {
     requirements.push({
       observationId: DEFAULT_REF_OBSERVATION_ID,
