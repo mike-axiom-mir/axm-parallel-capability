@@ -47,3 +47,10 @@ export {
   createVerifiedExternalRegistryBundle,
   getExternalClaim
 } from './external-source.js';
+
+export {
+  assertGitHubEvidenceCollection,
+  collectGitHubEvidence,
+  createExternalSourceReceiptFromGitHubCollection,
+  createMemoryGitHubEvidenceClient
+} from './github-evidence.js';
