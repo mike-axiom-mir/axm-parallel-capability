@@ -5,6 +5,8 @@ import {
 } from './registry.js';
 
 const RECEIPT_SCHEMA = 'axm.parallel-capability-external-source-receipt/v0.7';
+const CAPABILITY_SCHEMA = 'axm.parallel-capability-manifest/v0.6';
+const BODY_MAP_SCHEMA = 'axm.parallel-capability-body-map-manifest/v0.6';
 const DEFAULT_VERIFICATION_BASES = Object.freeze([
   'OBSERVED_SOURCE',
   'EXECUTION_EVIDENCE'
@@ -66,6 +68,7 @@ export function createVerifiedExternalCapabilityManifest(receipt, {
 
   const enhanced = {
     ...cloneJson(manifest),
+    schema: String(manifest.schema ?? CAPABILITY_SCHEMA),
     sourceRef: String(manifest.sourceRef ?? receipt.source.sourceRef),
     evidenceRefs: uniqueStrings([
       ...(manifest.evidenceRefs ?? []),
@@ -105,7 +108,17 @@ export function createVerifiedExternalRegistryBundle({
     }
     return createVerifiedExternalCapabilityManifest(receipt, item);
   });
-  return createRegistryBundle({ capabilities: verifiedCapabilities, bodyMaps });
+  const normalizedBodyMaps = bodyMaps.map((bodyMap, index) => {
+    if (!bodyMap || typeof bodyMap !== 'object' || Array.isArray(bodyMap)) {
+      throw new TypeError(`bodyMaps[${index}] must be an object`);
+    }
+    assertJson(bodyMap, `bodyMaps[${index}]`);
+    return {
+      ...cloneJson(bodyMap),
+      schema: String(bodyMap.schema ?? BODY_MAP_SCHEMA)
+    };
+  });
+  return createRegistryBundle({ capabilities: verifiedCapabilities, bodyMaps: normalizedBodyMaps });
 }
 
 export function getExternalClaim(receipt, claimId) {
