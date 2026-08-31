@@ -54,3 +54,9 @@ export {
   createExternalSourceReceiptFromGitHubCollection,
   createMemoryGitHubEvidenceClient
 } from './github-evidence.js';
+
+export {
+  assertEvidenceRefreshReceipt,
+  createEvidenceRefreshReceipt,
+  getClaimTransition
+} from './evidence-refresh.js';
