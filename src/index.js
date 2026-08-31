@@ -40,3 +40,10 @@ export {
   validateBodyMapManifest,
   validateCapabilityManifest
 } from './registry.js';
+
+export {
+  createExternalSourceReceipt,
+  createVerifiedExternalCapabilityManifest,
+  createVerifiedExternalRegistryBundle,
+  getExternalClaim
+} from './external-source.js';
