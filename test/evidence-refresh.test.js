@@ -35,6 +35,8 @@ const readerClaim = {
 async function collection({
   head,
   endHead = head,
+  repository = REPOSITORY,
+  ref = REF,
   sourcePresent = false,
   workflowConclusion = 'failure',
   workflowHead = head,
@@ -45,11 +47,11 @@ async function collection({
 }) {
   const files = {};
   if (sourcePresent) {
-    files[`${REPOSITORY}@${head}:source/reader-organs.js`] = { sha: readerBlobSha, size: 1200 };
-    files[`${REPOSITORY}@${head}:source/software-graph.js`] = { sha: `blob-graph-${head}`, size: 900 };
+    files[`${repository}@${head}:source/reader-organs.js`] = { sha: readerBlobSha, size: 1200 };
+    files[`${repository}@${head}:source/software-graph.js`] = { sha: `blob-graph-${head}`, size: 900 };
   }
   for (const extra of extraFiles) {
-    files[`${REPOSITORY}@${head}:${extra.path}`] = { sha: extra.sha, size: extra.size ?? 1 };
+    files[`${repository}@${head}:${extra.path}`] = { sha: extra.sha, size: extra.size ?? 1 };
   }
 
   const runs = workflowRuns ?? [{
@@ -68,8 +70,8 @@ async function collection({
       files,
       workflowRuns: runs
     }),
-    repository: REPOSITORY,
-    ref: REF,
+    repository,
+    ref,
     files: [
       { id: 'reader-source', path: 'source/reader-organs.js', expectedBlobSha: expectedReaderBlobSha },
       { id: 'graph-source', path: 'source/software-graph.js' },
@@ -210,13 +212,10 @@ test('tampering with a refresh receipt is rejected before consumers read transit
 
 test('refresh comparison refuses cross-repository or cross-ref lineage', async () => {
   const previous = await collection({ head: 'h1', sourcePresent: false });
-  const next = await collection({ head: 'h2', sourcePresent: false });
-  const otherRepo = structuredClone(next);
-  otherRepo.source.repository = 'other/repo';
+  const otherRepo = await collection({ head: 'h2', sourcePresent: false, repository: 'other/repo' });
   assert.throws(() => refresh(previous, otherRepo), /same repository/);
 
-  const otherRef = structuredClone(next);
-  otherRef.source.ref = 'other-ref';
+  const otherRef = await collection({ head: 'h2', sourcePresent: false, ref: 'other-ref' });
   assert.throws(() => refresh(previous, otherRef), /same named ref/);
 });
 
