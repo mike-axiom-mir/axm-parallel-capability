@@ -227,10 +227,10 @@ test('only SOURCE_VERIFIED external claims may become registry manifests', () =>
 
 test('tampering with an external receipt is detected before capability promotion', () => {
   const receipt = buildDiscoveryReceipt();
-  receipt.claims[0].status = 'SOURCE_VERIFIED';
+  receipt.source.headSha = 'tampered';
   assert.throws(() => createVerifiedExternalCapabilityManifest(receipt, {
-    claimId: 'scanner-claim',
-    manifest: { ...observerManifest(), id: SCANNER_ID }
+    claimId: 'import-status-observer-claim',
+    manifest: observerManifest()
   }), /integrity check failed/);
 });
 
