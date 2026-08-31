@@ -23,3 +23,4 @@ jobs:
       - run: npm run demo:registry > /dev/null
       - run: npm run demo:external > /dev/null
       - run: npm run demo:evidence > /dev/null
+      - run: npm run demo:refresh > /dev/null
