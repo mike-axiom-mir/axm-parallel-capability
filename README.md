@@ -96,15 +96,36 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 - a ready decomposition compiles directly into the v0.4 `CreationFabric` format;
 - a successful decomposed creation still stops at the protected-body plan and separate explicit `commitMerge(...)` gate.
 
-These claims are scoped to the Node harness and the documented state grammar. Clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of hostile-code sandboxing, VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
+#### v0.6 capability registry + body-map intake protocol
 
-See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, and `docs/DECOMPOSITION_GRAMMAR_V0_5.md` for the narrower contracts and limitations.
+- portable JSON-compatible capability and body-map manifests can be ingested without executing foreign code;
+- normalized capability and body-map manifests receive deterministic SHA-256 content identities;
+- portable registry snapshots receive deterministic structural snapshot identities;
+- runtime executor/test bindings are local process state and do not alter the portable registry snapshot;
+- exact manifest re-intake is idempotent;
+- same id with different manifest content is rejected instead of latest-writer-wins replacement;
+- mixed bundles preserve valid entries while malformed advertisements receive rejection receipts;
+- declared `manifestId` values are recomputed and mismatches are rejected;
+- runtime `executorRef` and `testRef` bindings are explicit and silent rebinding to different functions is refused;
+- unbound advertisements remain inert and are reported as unavailable during resolution;
+- body-map references to missing capabilities remain visible in resolution receipts;
+- registry resolution closes capability dependencies before handing executable descriptors to decomposition;
+- registry snapshot and capability manifest refs flow into Creation Fabric input lineage;
+- `createRegisteredDecompositionPlan(...)` resolves a registry catalog before invoking the v0.5 deterministic compiler;
+- `runRegisteredCreation(...)` resolves -> decomposes -> runs Creation Fabric while still stopping at the normal explicit protected merge gate;
+- imported manifests do not grant authority. v0.5 still intersects capability request, body-map permission, and global constraints.
+
+These claims are scoped to the Node harness and the documented JSON-state grammar. Clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of hostile-code sandboxing, VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
+
+See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, `docs/DECOMPOSITION_GRAMMAR_V0_5.md`, and `docs/CAPABILITY_REGISTRY_PROTOCOL_V0_6.md` for narrower contracts and limitations.
 
 ### Still proposal / not yet proven here
 
 - free-text goal parsing into trusted executable requirement tokens;
-- arbitrary capability discovery/spawning;
-- a reusable external capability registry/body-map intake protocol;
+- automatic repository crawling / manifest discovery;
+- cryptographic author authentication or signed capability manifests;
+- automatic verification that a declared `sourceRef` is truthful;
+- arbitrary capability discovery/spawning beyond explicitly supplied registry advertisements;
 - adaptive CPU/disk/event-loop backoff;
 - persistent checkpoint storage;
 - durable external clone/rollback storage;
@@ -143,9 +164,10 @@ npm run demo:merge
 npm run demo:clone
 npm run demo:creation
 npm run demo:decomposition
+npm run demo:registry
 ```
 
-The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit. `demo:creation` demonstrates scheduler-generated clone tasks -> automatic integration dependency -> protected-body plan -> explicit commit. `demo:decomposition` demonstrates explicit goal/body/capability descriptors -> deterministic candidate graph -> Creation Fabric -> explicit commit.
+The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit. `demo:creation` demonstrates scheduler-generated clone tasks -> integration dependency -> protected-body plan -> explicit commit. `demo:decomposition` demonstrates explicit goal/body/capability descriptors -> deterministic candidate graph -> Creation Fabric -> explicit commit. `demo:registry` demonstrates portable manifest intake -> local runtime binding -> registry resolution -> decomposition -> Creation Fabric -> explicit commit.
 
 ## Bounded scheduler API
 
@@ -193,7 +215,6 @@ const plan = createMergePlan({
   candidates: laneReceipts
 });
 
-// No state changed merely because a plan exists.
 const committed = commitMerge({
   state,
   currentStateRef: 'state:v1',
@@ -250,7 +271,6 @@ const bodyPlan = createBodyCommitPlan({
   candidates: [integration.candidate]
 });
 
-// Protected body is still untouched here.
 const committed = commitMerge({
   state: protectedBody,
   currentStateRef: 'body:v1',
@@ -263,7 +283,7 @@ const committed = commitMerge({
 ## Creation Fabric API
 
 ```js
-import { CreationFabric, commitMerge } from '@axm/parallel-capability';
+import { CreationFabric } from '@axm/parallel-capability';
 
 const fabric = new CreationFabric({ limits: { workers: 3 } });
 const cycle = fabric.start({
@@ -298,16 +318,9 @@ const cycle = fabric.start({
 });
 
 const receipt = await cycle.result;
-
-// Still no protected-state mutation.
-if (receipt.status === 'READY_FOR_EXPLICIT_COMMIT') {
-  const committed = commitMerge({
-    state: protectedBody,
-    currentStateRef: 'body:v1',
-    plan: receipt.bodyPlan.mergePlan
-  });
-}
 ```
+
+A ready Creation Fabric cycle still has not mutated the protected body. Adoption requires the separate public merge call.
 
 ## Decomposition API
 
@@ -357,9 +370,80 @@ const { plan, creation } = await runDecomposedCreation({
 });
 ```
 
-The human-readable `summary` is not the executable parser input. Exact requirement tokens, body-map permissions, capability descriptors, dependencies and constraints drive decomposition.
+The human-readable `summary` is not executable parser input. Exact requirement tokens, body-map permissions, capability descriptors, dependencies, and constraints drive decomposition.
 
-`READY` means the explicit grammar produced a runnable Creation Fabric graph under the declared predicates. It does not mean the graph is globally optimal, semantically complete, or safe outside the documented harness.
+## Capability Registry API
+
+v0.6 separates portable advertisement from local execution:
+
+```js
+import {
+  CapabilityRegistry,
+  createRegistryBundle,
+  runRegisteredCreation
+} from '@axm/parallel-capability';
+
+const registry = new CapabilityRegistry();
+
+registry.ingestBundle(createRegistryBundle({
+  capabilities: [{
+    schema: 'axm.parallel-capability-manifest/v0.6',
+    id: 'cache-builder',
+    version: '1',
+    sourceRef: 'repo:example@ref:cache-builder',
+    executorRef: 'executor:cache-builder/v1',
+    role: 'CACHE',
+    pressure: 'balanced',
+    provides: ['cache-upgrade'],
+    dependsOn: [],
+    targetAreas: ['config'],
+    authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
+    resources: { workers: 1 },
+    inputRefs: [],
+    evidenceRefs: ['contract:cache-builder'],
+    testRefs: ['test:cache-builder/v1'],
+    priority: 10,
+    metadata: {}
+  }],
+  bodyMaps: [{
+    schema: 'axm.parallel-capability-body-map-manifest/v0.6',
+    id: 'example-body',
+    version: '1',
+    sourceRef: 'repo:example@ref:body-map',
+    areas: [{
+      id: 'config',
+      path: 'config',
+      allowedCapabilities: ['cache-builder'],
+      authorities: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE']
+    }],
+    metadata: {}
+  }]
+}));
+
+// Structural intake above was inert. Bind runtime behavior separately.
+registry.bindExecutor('executor:cache-builder/v1', ({ state }) => {
+  state.config.cacheMB = 128;
+});
+registry.bindTest('test:cache-builder/v1', ({ state }) => state.config.cacheMB === 128);
+
+const result = await runRegisteredCreation(registry, {
+  bodyMapId: 'example-body',
+  runId: 'registry-run',
+  state: protectedBody,
+  stateRef: 'body:v1',
+  rollbackRef: 'body:v0',
+  goal: {
+    id: 'cache-upgrade',
+    requirements: [{ id: 'cache', token: 'cache-upgrade' }],
+    integrationTests: [
+      { id: 'cache-target', test: ({ state }) => state.config.cacheMB === 128 }
+    ]
+  },
+  constraints: { resourceBudget: { limits: { workers: 2 } } }
+});
+```
+
+Portable manifest hashes and registry snapshot hashes identify deterministic supplied content. They are not cryptographic signatures and do not prove the truth of `sourceRef`.
 
 ## Design boundary
 
@@ -367,6 +451,6 @@ A lane is a bounded work contract, not automatically a persistent agent. Same-bo
 
 The repository now demonstrates a reversible sequence for its bounded JSON-state harness:
 
-`explicit goal grammar -> deterministic candidate graph -> scheduler-generated clone tasks -> parallel candidate bodies -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
+`portable capability advertisement -> inert registry intake -> local runtime binding -> registry resolution -> explicit goal grammar -> deterministic candidate graph -> scheduler-generated clone tasks -> parallel candidate bodies -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
 
-That is still a prototype grammar, not universal transaction, general-language understanding, or autonomous creation infrastructure.
+That is still a prototype grammar, not universal transaction infrastructure, general-language understanding, arbitrary code trust, or autonomous general creation.
