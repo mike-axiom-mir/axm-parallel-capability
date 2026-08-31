@@ -115,17 +115,37 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 - `runRegisteredCreation(...)` resolves -> decomposes -> runs Creation Fabric while still stopping at the normal explicit protected merge gate;
 - imported manifests do not grant authority. v0.5 still intersects capability request, body-map permission, and global constraints.
 
+#### v0.7 external source adapter + first real external organ
+
+- pinned external repository/ref/head observations can be converted into an integrity-bound external-source receipt;
+- observation basis is explicit, including `OBSERVED_SOURCE`, `EXECUTION_EVIDENCE`, and `DECLARED`;
+- declared workflow intent does not count as verification evidence by default;
+- capability claims are evaluated independently as `SOURCE_VERIFIED`, `HOLD_SOURCE_INCOMPLETE`, or `SOURCE_CONTRADICTED`;
+- only `SOURCE_VERIFIED` claims may be promoted into v0.6 portable capability manifests;
+- changing a completed external-source receipt causes its promotion integrity check to fail;
+- promoted manifests carry source receipt/evidence lineage but still contain no foreign executable callback;
+- runtime executor/test functions remain explicit local v0.6 registry bindings;
+- Discovery Buddy is the first real read-only external source used by this adapter;
+- at the inspected Discovery Buddy work ref, the repository was still a staged import rather than a materialized scanner source tree;
+- the observed recovery/materialization Actions run had conclusion `failure`;
+- `discovery-buddy.scanner` therefore remains `HOLD_SOURCE_INCOMPLETE` rather than being silently promoted;
+- the narrower `discovery-buddy.import-status-observer` claim is `SOURCE_VERIFIED` for projecting the actually observed repository/import state only;
+- the first real external-organ cycle flows through registry -> decomposition -> Creation Fabric while executing only a local observer adapter;
+- the original protected body remains unchanged until the separate explicit public merge call.
+
 These claims are scoped to the Node harness and the documented JSON-state grammar. Clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of hostile-code sandboxing, VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
 
-See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, `docs/DECOMPOSITION_GRAMMAR_V0_5.md`, and `docs/CAPABILITY_REGISTRY_PROTOCOL_V0_6.md` for narrower contracts and limitations.
+See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, `docs/DECOMPOSITION_GRAMMAR_V0_5.md`, `docs/CAPABILITY_REGISTRY_PROTOCOL_V0_6.md`, and `docs/EXTERNAL_SOURCE_ADAPTER_V0_7.md` for narrower contracts and limitations.
 
 ### Still proposal / not yet proven here
 
 - free-text goal parsing into trusted executable requirement tokens;
 - automatic repository crawling / manifest discovery;
+- automatic GitHub evidence collection into v0.7 receipts;
 - cryptographic author authentication or signed capability manifests;
 - automatic verification that a declared `sourceRef` is truthful;
 - arbitrary capability discovery/spawning beyond explicitly supplied registry advertisements;
+- Discovery Buddy scanner promotion before its real source tree materializes and passes required verification;
 - adaptive CPU/disk/event-loop backoff;
 - persistent checkpoint storage;
 - durable external clone/rollback storage;
@@ -165,9 +185,10 @@ npm run demo:clone
 npm run demo:creation
 npm run demo:decomposition
 npm run demo:registry
+npm run demo:external
 ```
 
-The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit. `demo:creation` demonstrates scheduler-generated clone tasks -> integration dependency -> protected-body plan -> explicit commit. `demo:decomposition` demonstrates explicit goal/body/capability descriptors -> deterministic candidate graph -> Creation Fabric -> explicit commit. `demo:registry` demonstrates portable manifest intake -> local runtime binding -> registry resolution -> decomposition -> Creation Fabric -> explicit commit.
+The first three demos cover the founding builder-handoff targets. `demo:merge` demonstrates the v0.2 plan -> commit -> receipt -> rollback gate. `demo:clone` demonstrates candidate clones -> integration clone -> protected-body plan -> explicit commit. `demo:creation` demonstrates scheduler-generated clone tasks -> integration dependency -> protected-body plan -> explicit commit. `demo:decomposition` demonstrates explicit goal/body/capability descriptors -> deterministic candidate graph -> Creation Fabric -> explicit commit. `demo:registry` demonstrates portable manifest intake -> local runtime binding -> registry resolution -> decomposition -> Creation Fabric -> explicit commit. `demo:external` uses the frozen real Discovery Buddy v0.7 GitHub evidence fixture to demonstrate scanner HOLD -> verified import-status observer -> inert manifest -> local binding -> registry -> decomposition -> Creation Fabric -> explicit commit.
 
 ## Bounded scheduler API
 
@@ -445,12 +466,62 @@ const result = await runRegisteredCreation(registry, {
 
 Portable manifest hashes and registry snapshot hashes identify deterministic supplied content. They are not cryptographic signatures and do not prove the truth of `sourceRef`.
 
+## External source API
+
+v0.7 inserts source-evidence verification before a foreign capability may enter the portable registry:
+
+```js
+import {
+  createExternalSourceReceipt,
+  createVerifiedExternalCapabilityManifest
+} from '@axm/parallel-capability';
+
+const receipt = createExternalSourceReceipt({
+  adapterId: 'github-readonly/v0.7',
+  source: {
+    repository: 'owner/repo',
+    ref: 'work-branch',
+    headSha: 'pinned-commit-sha'
+  },
+  observations: [{
+    id: 'source-file',
+    kind: 'FILE',
+    status: 'PRESENT',
+    basis: 'OBSERVED_SOURCE',
+    evidenceRef: 'github:owner/repo@sha:path:file-sha'
+  }],
+  claims: [{
+    id: 'claim-1',
+    capabilityId: 'example.observer',
+    requirements: [{
+      observationId: 'source-file',
+      acceptedStatuses: ['PRESENT']
+    }]
+  }]
+});
+
+const portableManifest = createVerifiedExternalCapabilityManifest(receipt, {
+  claimId: 'claim-1',
+  manifest: {
+    id: 'example.observer',
+    executorRef: 'local-adapter:example/v1',
+    provides: ['example-observation'],
+    targetAreas: ['externalStatus'],
+    authority: ['WRITE-SANDBOX', 'COMMIT-CANDIDATE'],
+    resources: { workers: 1 },
+    testRefs: ['local-test:example/v1']
+  }
+});
+```
+
+The promoted object is still only an inert v0.6 manifest. Foreign repository code is not executed by this API. Local executor/test binding remains a separate decision.
+
 ## Design boundary
 
 A lane is a bounded work contract, not automatically a persistent agent. Same-body coordination never implies unlimited write or merge authority.
 
 The repository now demonstrates a reversible sequence for its bounded JSON-state harness:
 
-`portable capability advertisement -> inert registry intake -> local runtime binding -> registry resolution -> explicit goal grammar -> deterministic candidate graph -> scheduler-generated clone tasks -> parallel candidate bodies -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
+`pinned external source evidence -> claim verification/hold -> inert portable capability advertisement -> local runtime binding -> registry resolution -> explicit goal grammar -> deterministic candidate graph -> scheduler-generated clone tasks -> parallel candidate bodies -> receipts/diffs -> conflict/test gate -> integration clone -> integration candidate -> protected-body plan -> explicit commit -> rollback receipt`
 
-That is still a prototype grammar, not universal transaction infrastructure, general-language understanding, arbitrary code trust, or autonomous general creation.
+That is still a prototype grammar, not universal transaction infrastructure, general-language understanding, arbitrary code trust, cryptographic source authentication, or autonomous general creation.
