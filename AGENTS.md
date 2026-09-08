@@ -208,3 +208,19 @@ Quality is often the accumulated result of many small correct details, not one l
 - Do not fragment working systems merely for ideology. Add granularity where it creates useful control, reuse, diagnosis, repair, or quality.
 
 **Working rule:** thousands of small good details and capabilities in the right places can improve a result more than one simple big upgrade.
+
+## Canonical state and adaptive realization principle
+
+When useful, keep shared/canonical work state separate from how a particular worker, model, device, or UI chooses to present or materialize it.
+
+- Canonical task/state/receipt truth is authoritative; dashboards, previews, visualizations, model-specific formats, caches, and presentation layers are realizations.
+- Preserve expression/communication intent separately when needed so a lower-cost realization can still express the same meaning.
+- Prefer one canonical work body with bounded realization contracts over divergent platform/model-specific truths.
+- Choose realization from canonical state + expression intent + measured machine capabilities + user policy; adaptation may happen at launch or dynamically.
+- A weaker lane/device/model should receive cheaper expression or less optional work, **not weaker shared truth**.
+- Never degrade authority, evidence, merge rules, data integrity, provenance, privacy, or canonical task state to fit a presentation/resource budget.
+- Never let a lossy lane-local representation overwrite richer canonical state merely because that lane produced it. Projection/cache state is not authority.
+- Richer realization may expose more of existing state/intent; it may not invent canonical facts.
+- Apply this split only where representation can honestly remain subordinate to shared truth.
+
+**Working rule:** degrade expression, never truth; upgrade expression, never invent truth.
