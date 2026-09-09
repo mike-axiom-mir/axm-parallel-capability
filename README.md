@@ -23,7 +23,7 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 - lane receipts;
 - deterministic output ordering by declared task plan;
 - pause/resume/cancel;
-- checkpoint export and exact `runId` + `stateRef` binding;
+- checkpoint export and exact `runId` + `stateRef` binding (legacy v0.1 contract);
 - failed-dependency propagation;
 - contradiction preservation;
 - proposed-change conflict reporting;
@@ -133,9 +133,19 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 - the first real external-organ cycle flows through registry -> decomposition -> Creation Fabric while executing only a local observer adapter;
 - the original protected body remains unchanged until the separate explicit public merge call.
 
+#### v0.10 checkpoint plan and content binding
+
+- v0.2 checkpoints bind the complete normalized structural run specification with SHA-256;
+- resumed output is accepted only when `runId`, `stateRef`, explicit caller-owned `checkpointRef`, and the structural spec fingerprint all match;
+- the checkpoint integrity id covers restored states, outputs, and receipts;
+- restored receipt lineage and duplicate/unknown/non-reusable task entries are checked before state is applied;
+- v0.1 checkpoints fail closed because their missing plan identity cannot be reconstructed honestly;
+- normal non-resumed runs remain compatible and may still export a checkpoint, but reuse requires an explicit `checkpointRef` that callers must change when implementation semantics or hidden inputs change;
+- the hash is an integrity binding, not author authentication and not proof that an opaque reference is truthful.
+
 These claims are scoped to the Node harness and the documented JSON-state grammar. Clone isolation currently means **independent in-memory JSON-compatible plain-object copies inside one JavaScript process**. It is not a claim of hostile-code sandboxing, VM/container isolation, filesystem cloning, source-tree cloning, databases, binary assets, or game/world engines.
 
-See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, `docs/DECOMPOSITION_GRAMMAR_V0_5.md`, `docs/CAPABILITY_REGISTRY_PROTOCOL_V0_6.md`, and `docs/EXTERNAL_SOURCE_ADAPTER_V0_7.md` for narrower contracts and limitations.
+See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, `docs/DECOMPOSITION_GRAMMAR_V0_5.md`, `docs/CAPABILITY_REGISTRY_PROTOCOL_V0_6.md`, `docs/EXTERNAL_SOURCE_ADAPTER_V0_7.md`, and `docs/CHECKPOINT_INTEGRITY_CONTRACT_V0_10.md` for narrower contracts and limitations.
 
 ### Still proposal / not yet proven here
 
