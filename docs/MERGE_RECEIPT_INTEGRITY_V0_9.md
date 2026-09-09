@@ -22,6 +22,8 @@ That meant a stored or transported receipt could have its accepted/rejected cand
 - the exact resulting canonical state;
 - the integrity-bound rollback token and its merge lineage.
 
+Receipt and rollback-token admission also rejects unsupported envelope fields rather than presenting unsealed extensions as valid evidence. New rollback tokens that carry `mergeReceiptId` bind their `createdAt` timestamp into the token identity and require it to match the receipt's `committedAt`. Legacy rollback tokens without merge-receipt lineage retain their earlier verification shape so existing recovery evidence is not invalidated.
+
 The caller-pinned identity matters when deliberate substitution is in scope: a newly resealed but different receipt is self-consistent, but it is not the receipt identity the caller previously accepted.
 
 ## Evidence boundary
