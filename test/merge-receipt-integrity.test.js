@@ -71,6 +71,28 @@ test('receipt mutation is rejected instead of remaining plausible audit evidence
   );
 });
 
+test('unsealed fields cannot be injected into a valid merge receipt', () => {
+  const committed = commit();
+  const tampered = structuredClone(committed.receipt);
+  tampered.canonAuthority = 'FORGED';
+
+  assert.throws(
+    () => verifyMergeReceipt({ receipt: tampered }),
+    /Merge receipt contains unsupported fields: canonAuthority/
+  );
+});
+
+test('new rollback tokens bind their exact creation time', () => {
+  const committed = commit();
+  const tampered = structuredClone(committed.rollbackToken);
+  tampered.createdAt = '2099-01-01T00:00:00.000Z';
+
+  assert.throws(
+    () => verifyMergeReceipt({ receipt: committed.receipt, rollbackToken: tampered }),
+    /Rollback token integrity check failed/
+  );
+});
+
 test('caller-pinned receipt identity rejects a different self-consistent merge receipt', () => {
   const original = commit({ value: 128, candidateId: 'cache-128' });
   const substitute = commit({ value: 256, candidateId: 'cache-256' });
