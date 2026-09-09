@@ -55,12 +55,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Prove pinned provider checkout identity
-        run: test "$(git -C .provider/axm-causal-loop rev-parse HEAD)" = "$PROVIDER_HEAD"
+        run: test "$(git -C "$GITHUB_WORKSPACE/.provider/axm-casual-loop" rev-parse HEAD)" = "$PROVIDER_HEAD"
 
       - name: Execute real provider through consumer adapter
         run: |
           node examples/causal-loop-runtime-observation.js \
-            "$GITHUB_WORKSPACE/.provider/axm-causal-loop" \
+            "$GITHUB_WORKSPACE/.provider/axm-casual-loop" \
             "$PROVIDER_HEAD" > "$RUNNER_TEMP/causal-loop-runtime-observation.json"
 
       - name: Independently verify emitted consumer receipt
