@@ -40,6 +40,8 @@ Different valid checkpoint identities coexist, so concurrent actors do not overw
 
 Abandoned temporary files are not candidates for resume and are ignored by exact-id reads. The scheduler still performs its existing run/state/checkpoint/spec/receipt-lineage validation when the loaded object is supplied to `start(..., { checkpoint })`.
 
+Scheduler admission also rejects `COMPLETED_AFTER_CANCEL`. The store can persist a cancelled run's valid checkpoint, but that checkpoint excludes outputs produced after cancellation; those outputs remain evidence only in the originating run receipt.
+
 ## Storage receipt
 
 A successful `put` returns `axm.parallel-capability-checkpoint-store-receipt/v0.1` with:

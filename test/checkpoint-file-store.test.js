@@ -104,6 +104,87 @@ test('persisted v0.2 checkpoint resumes in a fresh Node process without rerunnin
   assert.deepEqual(JSON.parse(stdout), { status: 'COMPLETED', output: { value: 42 } });
 }));
 
+test('work completed after cancellation is evidence, not reusable state after restart', async () => withStoreRoot(async (root) => {
+  let started;
+  let release;
+  const startedPromise = new Promise((resolve) => { started = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  const spec = {
+    runId: 'cancelled-restart-run',
+    goal: 'do not restore work completed after authority was cancelled',
+    stateRef: 'state:cancel-v1',
+    rollbackRef: 'state:cancel-v0',
+    checkpointRef: 'implementation:cancel-v1',
+    tasks: [{
+      taskId: 'late',
+      capabilityId: 'fixture.late',
+      inputRefs: ['fixture:v1'],
+      run: async () => {
+        started();
+        await gate;
+        return { output: { source: 'late-after-cancel' } };
+      }
+    }]
+  };
+
+  const firstSession = new ParallelCapabilityFabric({ limits: { workers: 1 } }).start(spec);
+  await startedPromise;
+  firstSession.cancel();
+  release();
+  const first = await firstSession.result;
+
+  assert.equal(first.status, 'CANCELLED');
+  assert.deepEqual(first.outputs[0], {
+    taskId: 'late',
+    laneId: 'late',
+    status: 'COMPLETED_AFTER_CANCEL',
+    output: { source: 'late-after-cancel' }
+  });
+  assert.equal(first.laneReceipts[0].status, 'COMPLETED_AFTER_CANCEL');
+  assert.deepEqual(first.checkpoint.completed, []);
+
+  const store = new LocalCheckpointFileStore({ root });
+  await store.put(first.checkpoint);
+  const childScript = `
+    const { LocalCheckpointFileStore } = await import('./src/checkpoint-file-store.js');
+    const { ParallelCapabilityFabric } = await import('./src/fabric.js');
+    const checkpoint = await new LocalCheckpointFileStore({ root: process.env.AXM_CHECKPOINT_ROOT }).get(process.env.AXM_CHECKPOINT_ID);
+    let executions = 0;
+    const spec = {
+      runId: 'cancelled-restart-run',
+      goal: 'do not restore work completed after authority was cancelled',
+      stateRef: 'state:cancel-v1',
+      rollbackRef: 'state:cancel-v0',
+      checkpointRef: 'implementation:cancel-v1',
+      tasks: [{
+        taskId: 'late',
+        capabilityId: 'fixture.late',
+        inputRefs: ['fixture:v1'],
+        run: () => {
+          executions += 1;
+          return { output: { source: 'fresh-reexecution' } };
+        }
+      }]
+    };
+    const receipt = await new ParallelCapabilityFabric({ limits: { workers: 1 } }).start(spec, { checkpoint }).result;
+    process.stdout.write(JSON.stringify({ executions, output: receipt.outputs[0].output, status: receipt.outputs[0].status }));
+  `;
+
+  const { stdout } = await execFileAsync(process.execPath, ['--input-type=module', '--eval', childScript], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      AXM_CHECKPOINT_ROOT: root,
+      AXM_CHECKPOINT_ID: first.checkpoint.checkpointId
+    }
+  });
+  assert.deepEqual(JSON.parse(stdout), {
+    executions: 1,
+    output: { source: 'fresh-reexecution' },
+    status: 'COMPLETED'
+  });
+}));
+
 test('stored bytes are canonical and reload through a fresh store instance', async () => withStoreRoot(async (root) => {
   const checkpoint = makeCheckpoint();
   const store = new LocalCheckpointFileStore({ root });

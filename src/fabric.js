@@ -595,7 +595,14 @@ function isDependencyFailed(status) {
 }
 
 function isReusableState(status) {
-  return status && !['PENDING', 'RUNNING', 'FAILED', 'BLOCKED_DEPENDENCY', 'CANCELLED'].includes(status);
+  return status && ![
+    'PENDING',
+    'RUNNING',
+    'FAILED',
+    'BLOCKED_DEPENDENCY',
+    'CANCELLED',
+    'COMPLETED_AFTER_CANCEL'
+  ].includes(status);
 }
 
 function serializeError(error) {

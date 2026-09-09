@@ -16,6 +16,8 @@ A checkpoint now carries:
 
 Resume applies no state until every outer binding and the checkpoint integrity identity pass. Restored entries must reference known tasks exactly once, have reusable states, and carry receipts whose run/task/state lineage matches the current run.
 
+`COMPLETED_AFTER_CANCEL` is intentionally not reusable. A non-cooperative task may still return after the caller cancels a run; its late output and receipt remain visible as evidence in that run, but checkpoint export excludes them and checkpoint admission rejects them. A later run must execute that task again under current authority instead of reviving work completed after cancellation.
+
 The structural fingerprint covers task order, ids, lane/capability ids, dependencies, authority, resource declarations, input refs, the goal, state/rollback refs, resource budget, and `checkpointRef`. Executable JavaScript functions are deliberately not serialized or claimed to be cryptographically identified.
 
 ## Caller duty

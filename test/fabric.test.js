@@ -224,6 +224,23 @@ test('checkpoint receipt lineage is checked after content integrity', async () =
   );
 });
 
+test('checkpoint admission rejects output completed after cancellation', async () => {
+  const fabric = new ParallelCapabilityFabric({ limits: { workers: 1 } });
+  const spec = makeSpec([
+    { taskId: 'late', run: () => ({ output: 'fresh' }) }
+  ], { runId: 'checkpoint-cancelled', stateRef: 'state:same', checkpointRef: 'implementation:v1' });
+  const completed = await fabric.start(spec).result;
+  const forged = structuredClone(completed.checkpoint);
+  forged.completed[0].state = 'COMPLETED_AFTER_CANCEL';
+  forged.completed[0].receipt.status = 'COMPLETED_AFTER_CANCEL';
+  resignCheckpoint(forged);
+
+  assert.throws(
+    () => fabric.start(spec, { checkpoint: forged }),
+    /non-reusable state: COMPLETED_AFTER_CANCEL/
+  );
+});
+
 test('legacy v0.1 checkpoints fail closed instead of receiving invented plan identity', () => {
   const fabric = new ParallelCapabilityFabric({ limits: { workers: 1 } });
   const spec = makeSpec([

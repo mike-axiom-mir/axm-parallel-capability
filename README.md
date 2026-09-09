@@ -138,6 +138,7 @@ See `docs/FOUNDING_DIRECTION.md` for the source-grounded repository intake. The 
 - v0.2 checkpoints bind the complete normalized structural run specification with SHA-256;
 - resumed output is accepted only when `runId`, `stateRef`, explicit caller-owned `checkpointRef`, and the structural spec fingerprint all match;
 - the checkpoint integrity id covers restored states, outputs, and receipts;
+- work returned after cancellation remains visible in the originating receipt but is excluded from checkpoint reuse;
 - restored receipt lineage and duplicate/unknown/non-reusable task entries are checked before state is applied;
 - v0.1 checkpoints fail closed because their missing plan identity cannot be reconstructed honestly;
 - normal non-resumed runs remain compatible and may still export a checkpoint, but reuse requires an explicit `checkpointRef` that callers must change when implementation semantics or hidden inputs change;
