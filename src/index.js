@@ -16,6 +16,10 @@ export {
 } from './merge-gate.js';
 
 export {
+  commitBodyPlan
+} from './body-commit.js';
+
+export {
   buildIntegrationClone,
   createBodyCommitPlan,
   diffJsonState,
