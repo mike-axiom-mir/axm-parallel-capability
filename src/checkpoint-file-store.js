@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 const CHECKPOINT_SCHEMA = 'axm.parallel-capability-checkpoint/v0.2';
 const CHECKPOINT_ID_RE = /^parallel-checkpoint:sha256:([0-9a-f]{64})$/;
 const STORE_RECEIPT_SCHEMA = 'axm.parallel-capability-checkpoint-store-receipt/v0.1';
+const STORE_ROOT_UNSAFE = 'AXM_CHECKPOINT_STORE_ROOT_UNSAFE';
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 
 export class LocalCheckpointFileStore {
@@ -21,7 +22,7 @@ export class LocalCheckpointFileStore {
 
   async put(checkpoint) {
     const verified = verifyCheckpointForStorage(checkpoint, { maxBytes: this.maxBytes });
-    await mkdir(this.root, { recursive: true });
+    await prepareStoreRoot(this.root);
     const target = this._pathForVerified(verified);
 
     if (await pathExists(target)) {
@@ -75,6 +76,7 @@ export class LocalCheckpointFileStore {
 
   async get(checkpointId) {
     const hex = checkpointIdHex(checkpointId);
+    await assertSafeStoreRoot(this.root);
     const target = join(this.root, `${hex}.checkpoint.json`);
     const info = await lstat(target);
     if (!info.isFile()) {
@@ -159,6 +161,34 @@ function checkpointIdHex(checkpointId) {
   const match = CHECKPOINT_ID_RE.exec(checkpointId);
   if (!match) throw new Error('checkpointId must be parallel-checkpoint:sha256:<64 lowercase hex>');
   return match[1];
+}
+
+async function prepareStoreRoot(root) {
+  try {
+    await assertSafeStoreRoot(root);
+    return;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+
+  await mkdir(root, { recursive: true });
+  await assertSafeStoreRoot(root);
+}
+
+async function assertSafeStoreRoot(root) {
+  const info = await lstat(root);
+  if (info.isSymbolicLink()) {
+    throw unsafeStoreRootError(root, 'symbolic links are forbidden');
+  }
+  if (!info.isDirectory()) {
+    throw unsafeStoreRootError(root, 'expected a directory');
+  }
+}
+
+function unsafeStoreRootError(root, reason) {
+  const error = new Error(`Unsafe checkpoint store root ${JSON.stringify(root)}: ${reason}`);
+  error.code = STORE_ROOT_UNSAFE;
+  return error;
 }
 
 async function pathExists(path) {
