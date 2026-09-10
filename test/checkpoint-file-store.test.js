@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -168,3 +168,49 @@ test('path-like ids, non-portable JSON, and oversized checkpoints fail closed', 
   const oversized = makeCheckpoint({ padding: 'x'.repeat(2000) });
   await assert.rejects(store.put(oversized), /maxBytes/);
 }));
+
+test('put refuses a configured checkpoint root that is a symbolic link', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'axm-checkpoint-root-link-'));
+  const realRoot = join(base, 'real-store');
+  const linkedRoot = join(base, 'configured-store');
+  try {
+    await mkdir(realRoot);
+    await symlink(realRoot, linkedRoot, 'dir');
+    const checkpoint = makeCheckpoint({ createdAt: '2026-09-10T05:00:00.000Z' });
+    const store = new LocalCheckpointFileStore({ root: linkedRoot });
+
+    let observedError = null;
+    try {
+      await store.put(checkpoint);
+    } catch (error) {
+      observedError = error;
+    }
+    const redirectedPath = join(realRoot, `${checkpoint.checkpointId.slice(-64)}.checkpoint.json`);
+    const redirected = await readFile(redirectedPath, 'utf8').then(() => true, () => false);
+
+    assert.equal(observedError?.code, 'AXM_CHECKPOINT_STORE_ROOT_UNSAFE', `expected unsafe-root rejection; redirected=${redirected}`);
+    assert.equal(redirected, false, 'checkpoint bytes escaped through the configured root symlink');
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test('get refuses a configured checkpoint root that is a symbolic link', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'axm-checkpoint-root-link-'));
+  const realRoot = join(base, 'real-store');
+  const linkedRoot = join(base, 'configured-store');
+  try {
+    const checkpoint = makeCheckpoint({ createdAt: '2026-09-10T05:01:00.000Z' });
+    const directStore = new LocalCheckpointFileStore({ root: realRoot });
+    await directStore.put(checkpoint);
+    await symlink(realRoot, linkedRoot, 'dir');
+
+    const linkedStore = new LocalCheckpointFileStore({ root: linkedRoot });
+    await assert.rejects(
+      linkedStore.get(checkpoint.checkpointId),
+      (error) => error?.code === 'AXM_CHECKPOINT_STORE_ROOT_UNSAFE'
+    );
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
