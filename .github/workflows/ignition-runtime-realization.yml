@@ -1,0 +1,90 @@
+name: Ignition runtime realization bridge
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Syntax
+        run: |
+          node --check src/ignition-runtime.js
+          node --check test/ignition-runtime.test.js
+          node --check tools/ignition-runtime-smoke.mjs
+      - name: Focused adapter tests
+        run: node --test test/ignition-runtime.test.js
+      - name: Complete repository tests
+        run: npm test
+      - name: Prove optional subpath survives local package handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/packages" "$RUNNER_TEMP/package-consumer"
+          archive="$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/packages")"
+          cd "$RUNNER_TEMP/package-consumer"
+          npm init -y >/dev/null
+          npm install --offline --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/packages/$archive"
+          node --input-type=module -e "import('@axm/parallel-capability/ignition-runtime').then((m) => { if (typeof m.bindIgnitionExecutorSet !== 'function') process.exit(2); })"
+
+  real-provider:
+    runs-on: ubuntu-latest
+    env:
+      IGNITION_HEAD: 6defd4182a41fa226b4d8352d9186d5431634573
+    steps:
+      - name: Checkout Parallel Capability consumer
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Checkout exact Ignition provider
+        uses: actions/checkout@v4
+        with:
+          repository: mike-axiom-mir/axm-ignition-fabric
+          ref: 6defd4182a41fa226b4d8352d9186d5431634573
+          path: ignition-provider
+      - name: Verify provider identity and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ignition-provider rev-parse HEAD)" = "$IGNITION_HEAD"
+          (cd ignition-provider && npm test)
+      - name: Build both local packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/packages"
+          parallel_archive="$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/packages")"
+          ignition_archive="$(cd ignition-provider && npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/packages")"
+          printf 'PARALLEL_ARCHIVE=%s\n' "$parallel_archive" >> "$GITHUB_ENV"
+          printf 'IGNITION_ARCHIVE=%s\n' "$ignition_archive" >> "$GITHUB_ENV"
+      - name: Install offline into unrelated consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/consumer"
+          cd "$RUNNER_TEMP/consumer"
+          npm init -y >/dev/null
+          npm install --offline --ignore-scripts --no-audit --no-fund \
+            "$RUNNER_TEMP/packages/$PARALLEL_ARCHIVE" \
+            "$RUNNER_TEMP/packages/$IGNITION_ARCHIVE"
+          cp "$GITHUB_WORKSPACE/tools/ignition-runtime-smoke.mjs" ./smoke.mjs
+          IGNITION_SOURCE_REF="mike-axiom-mir/axm-ignition-fabric@$IGNITION_HEAD" node smoke.mjs | tee ignition-runtime-evidence.json
+      - name: Retain integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ignition-runtime-realization-evidence
+          path: ${{ runner.temp }}/consumer/ignition-runtime-evidence.json
+          if-no-files-found: error
