@@ -100,6 +100,9 @@ export class LocalCheckpointFileStore {
     if (verified.checkpointId !== checkpointId) {
       throw new Error(`Stored checkpoint identity mismatch: ${verified.checkpointId} !== ${checkpointId}`);
     }
+    if (raw !== `${verified.canonical}\n`) {
+      throw new Error(`Stored checkpoint is not canonical checkpoint storage bytes: ${checkpointId}`);
+    }
     return checkpoint;
   }
 
