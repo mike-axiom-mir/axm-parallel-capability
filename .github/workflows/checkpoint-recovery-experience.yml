@@ -27,7 +27,7 @@ jobs:
         run: npm test
       - name: Install pinned browser test harness
         run: |
-          npm install --no-save --package-lock=false playwright@1.55.0
+          npm install --no-save --package-lock=false playwright@1.63.0
           npx playwright install --with-deps chromium
       - name: Exercise exact checkpoint recovery surface
         run: node scripts/checkpoint-recovery-browser-selftest.mjs
