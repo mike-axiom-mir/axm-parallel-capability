@@ -36,7 +36,9 @@ Different valid checkpoint identities coexist, so concurrent actors do not overw
 
 ## Read contract
 
-`get(checkpointId)` reads only the exact content-addressed final filename. It rejects non-regular targets, oversized bytes, invalid JSON, unsupported schema, content/hash mismatch, and requested/stored identity mismatch.
+`get(checkpointId)` reads only the exact content-addressed final filename. It rejects non-regular targets, oversized bytes, invalid JSON, unsupported schema, content/hash mismatch, requested/stored identity mismatch, and stored bytes that differ from the store's exact canonical UTF-8 JSON plus one LF terminator.
+
+Semantically equivalent alternate whitespace/key ordering and duplicate-key JSON are held rather than normalized into trusted checkpoint storage. This binds the local storage representation to the same deterministic byte form produced by `put()`; it does not authenticate who wrote those bytes.
 
 Abandoned temporary files are not candidates for resume and are ignored by exact-id reads. The scheduler still performs its existing run/state/checkpoint/spec/receipt-lineage validation when the loaded object is supplied to `start(..., { checkpoint })`.
 
