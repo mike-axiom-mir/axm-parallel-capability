@@ -133,7 +133,7 @@ jobs:
           if (proof.selectedMaterialized !== 1 || proof.idleMaterialized !== 0) throw new Error('selective materialization proof failed');
           if (proof.selectedReleased !== 1) throw new Error('selected runtime was not released');
           if (!Number.isSafeInteger(proof.actualMaterializedBytes) || proof.actualMaterializedBytes <= 0) throw new Error('missing real materialization byte evidence');
-          if (!proof.deterministicThemeParkStateHash || !proof.deterministicIgnitionResultHash) throw new Error('deterministic result evidence missing');
+          if (!proof.deterministicThemeParkStateHash || !proof.deterministicIgnitionResultHash || !proof.deterministicParallelWorkOutputSha256) throw new Error('deterministic result evidence missing');
           if (proof.protectedBodyUnchanged !== true || proof.commitCalled !== false) throw new Error('protected boundary widened');
           if (proof.authority?.kind !== 'MATERIALIZATION_EVIDENCE_ONLY' || proof.authority?.canon !== false) throw new Error('authority contract widened');
           NODE

@@ -232,11 +232,16 @@ test('selected Parallel capability alone materializes through Ignition and retur
     beta: { materialize: 0, release: 0, work: 0 }
   });
   assert.deepEqual(result.creation.candidateOrder, ['alpha']);
-  const execution = result.creation.candidates[0].candidate.metadata.ignitionExecution;
+  const candidate = result.creation.candidates[0].candidate;
+  const execution = candidate.metadata.ignitionExecution;
   assert.equal(execution.actualMaterializedBytes, 1024);
   assert.deepEqual(execution.materializedCapabilityIds, ['parallel.runtime.alpha']);
-  assert.equal(verifyIgnitionExecutionEvidence(execution).status, 'PASS');
-  assert.equal(result.creation.candidates[0].candidate.evidenceRefs.some((ref) => ref === `ignition-execution:sha256:${execution.receiptSha256}`), true);
+  assert.equal(execution.schema, 'axm.parallel-capability-ignition-execution/v0.2');
+  assert.equal(execution.providerResultHash, 'result:executor:alpha');
+  assert.match(execution.cloneStateSha256, /^[0-9a-f]{64}$/);
+  assert.match(execution.workOutputSha256, /^[0-9a-f]{64}$/);
+  assert.equal(verifyIgnitionExecutionEvidence(execution, candidate).status, 'PASS');
+  assert.equal(candidate.evidenceRefs.some((ref) => ref === `ignition-execution:sha256:${execution.receiptSha256}`), true);
 });
 
 test('execution evidence fails closed after materialization claim drift', async () => {
@@ -252,7 +257,7 @@ test('execution evidence fails closed after materialization claim drift', async 
   });
   const tampered = structuredClone(output.metadata.ignitionExecution);
   tampered.actualMaterializedBytes += 1;
-  assert.throws(() => verifyIgnitionExecutionEvidence(tampered), /receiptSha256 mismatch/);
+  assert.throws(() => verifyIgnitionExecutionEvidence(tampered, output), /receiptSha256 mismatch/);
 });
 
 test('execution evidence fails closed when detached from the returned clone output', async () => {
@@ -281,6 +286,20 @@ test('execution evidence fails closed when detached from the returned clone outp
   assert.throws(
     () => verifyIgnitionExecutionEvidence(receipt, detached),
     /work output SHA-256 mismatch/
+  );
+
+  const differentState = structuredClone(candidate);
+  differentState.cloneStateHash = '0'.repeat(64);
+  assert.throws(
+    () => verifyIgnitionExecutionEvidence(receipt, differentState),
+    /clone state SHA-256 mismatch/
+  );
+
+  const unreferenced = structuredClone(candidate);
+  unreferenced.evidenceRefs = unreferenced.evidenceRefs.filter((ref) => !ref.startsWith('ignition-execution:sha256:'));
+  assert.throws(
+    () => verifyIgnitionExecutionEvidence(receipt, unreferenced),
+    /evidence ref is missing/
   );
 });
 

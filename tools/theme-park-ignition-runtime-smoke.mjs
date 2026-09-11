@@ -30,7 +30,8 @@ const first = await runProof();
 const second = await runProof();
 
 assert.deepEqual(second.summary, first.summary, 'same seeded Theme Park runtime must project the same bounded summary');
-assert.equal(second.execution.resultHash, first.execution.resultHash, 'Ignition result hash drifted across equivalent real-runtime runs');
+assert.equal(second.execution.providerResultHash, first.execution.providerResultHash, 'Ignition result hash drifted across equivalent real-runtime runs');
+assert.equal(second.execution.workOutputSha256, first.execution.workOutputSha256, 'Parallel work output hash drifted across equivalent real-runtime runs');
 assert.equal(first.protectedBodyUnchanged, true);
 assert.equal(second.protectedBodyUnchanged, true);
 
@@ -54,7 +55,8 @@ console.log(JSON.stringify({
   selectedReleased: first.tally.selected.release,
   actualMaterializedBytes: first.execution.actualMaterializedBytes,
   deterministicThemeParkStateHash: first.summary.after.stateHash,
-  deterministicIgnitionResultHash: first.execution.resultHash,
+  deterministicIgnitionResultHash: first.execution.providerResultHash,
+  deterministicParallelWorkOutputSha256: first.execution.workOutputSha256,
   protectedBodyUnchanged: first.protectedBodyUnchanged,
   commitCalled: false,
   authority: first.execution.authority
@@ -164,7 +166,7 @@ async function runProof() {
   const candidate = result.creation.candidates[0].candidate;
   const execution = candidate.metadata.ignitionExecution;
   const summary = candidate.metadata.themeParkRuntimeProjection;
-  assert.equal(verifyIgnitionExecutionEvidence(execution).status, 'PASS');
+  assert.equal(verifyIgnitionExecutionEvidence(execution, candidate).status, 'PASS');
   assert.deepEqual(execution.materializedCapabilityIds, ['parallel.runtime.theme-park-selected']);
   assert.deepEqual(execution.executedCapabilityIds, ['parallel.runtime.theme-park-selected']);
   assert.deepEqual(execution.releasedCapabilityIds, ['parallel.runtime.theme-park-selected']);
