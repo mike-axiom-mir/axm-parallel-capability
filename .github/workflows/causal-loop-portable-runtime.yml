@@ -1,0 +1,154 @@
+name: Causal Loop portable runtime observation
+
+on:
+  push:
+    branches:
+      - chat/19-causal-loop-portable-runtime
+    paths:
+      - 'src/causal-loop-portable-runtime.js'
+      - 'test/causal-loop-portable-runtime.test.js'
+      - 'examples/causal-loop-portable-runtime-observation.js'
+      - 'docs/CAUSAL_LOOP_PORTABLE_RUNTIME.md'
+      - '.github/workflows/causal-loop-portable-runtime.yml'
+  pull_request:
+    paths:
+      - 'src/causal-loop-portable-runtime.js'
+      - 'test/causal-loop-portable-runtime.test.js'
+      - 'examples/causal-loop-portable-runtime-observation.js'
+      - 'docs/CAUSAL_LOOP_PORTABLE_RUNTIME.md'
+      - '.github/workflows/causal-loop-portable-runtime.yml'
+
+permissions:
+  contents: read
+
+env:
+  PREREQUISITE_HEAD: 3e7f693d5961cabaac1dfdc1ad797939b21f227d
+  PROVIDER_HEAD: b14c4fad2af9f1843394c05d21a78df791c757ef
+
+jobs:
+  portable-consumer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node-version: '20'
+            python-version: '3.11'
+          - node-version: '22'
+            python-version: '3.13'
+    steps:
+      - name: Checkout exact Parallel Capability head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Assert consumer source identity and prerequisite ancestry
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git merge-base --is-ancestor "$PREREQUISITE_HEAD" HEAD
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Run focused portable admission regressions
+        run: node --test test/causal-loop-portable-runtime.test.js
+
+      - name: Run complete Parallel Capability suite
+        run: npm test
+
+      - name: Checkout exact Causal Loop portable provider
+        uses: actions/checkout@v4
+        with:
+          repository: mike-axiom-mir/axm-casual-loop
+          ref: ${{ env.PROVIDER_HEAD }}
+          path: .provider/axm-casual-loop
+          persist-credentials: false
+
+      - name: Assert exact provider source identity
+        run: test "$(git -C .provider/axm-casual-loop rev-parse HEAD)" = "$PROVIDER_HEAD"
+
+      - name: Set up provider Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run provider portable regressions
+        working-directory: .provider/axm-casual-loop
+        run: python -m unittest tests.test_portable_process -v
+
+      - name: Run complete provider suite
+        working-directory: .provider/axm-casual-loop
+        run: python -m unittest discover -s tests -v
+
+      - name: Build byte-identical portable artifacts
+        run: |
+          python .provider/axm-casual-loop/scripts/build_causal_loop_portable.py build --output "$RUNNER_TEMP/causal-loop-process-a.pyz"
+          python .provider/axm-casual-loop/scripts/build_causal_loop_portable.py build --output "$RUNNER_TEMP/causal-loop-process-b.pyz"
+          cmp "$RUNNER_TEMP/causal-loop-process-a.pyz" "$RUNNER_TEMP/causal-loop-process-b.pyz"
+          python .provider/axm-casual-loop/scripts/build_causal_loop_portable.py verify "$RUNNER_TEMP/causal-loop-process-a.pyz"
+
+      - name: Pin exact artifact digest
+        run: |
+          ARTIFACT_SHA="$(PYZ="$RUNNER_TEMP/causal-loop-process-a.pyz" python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          print(hashlib.sha256(Path(os.environ['PYZ']).read_bytes()).hexdigest())
+          PY
+          )"
+          test "${#ARTIFACT_SHA}" -eq 64
+          echo "ARTIFACT_SHA=$ARTIFACT_SHA" >> "$GITHUB_ENV"
+
+      - name: Remove provider source checkout before consumption
+        run: |
+          rm -rf .provider/axm-casual-loop
+          test ! -e .provider/axm-casual-loop
+
+      - name: Execute portable provider through real Parallel consumer
+        env:
+          PYTHON: python
+        run: |
+          node examples/causal-loop-portable-runtime-observation.js \
+            "$RUNNER_TEMP/causal-loop-process-a.pyz" \
+            "$ARTIFACT_SHA" \
+            "$PROVIDER_HEAD" > "$RUNNER_TEMP/parallel-causal-loop-portable-observation.json"
+
+      - name: Independently verify emitted consumer receipt
+        env:
+          RECEIPT: ${{ runner.temp }}/parallel-causal-loop-portable-observation.json
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { verifyPortableCausalLoopRuntimeObservation } from './src/causal-loop-portable-runtime.js';
+          const receipt = JSON.parse(readFileSync(process.env.RECEIPT, 'utf8'));
+          const verified = verifyPortableCausalLoopRuntimeObservation(receipt);
+          if (verified.status !== 'PASS') throw new Error('portable runtime observation did not verify');
+          if (verified.artifactSha256 !== process.env.ARTIFACT_SHA) throw new Error('caller-pinned artifact digest lineage mismatch');
+          if (receipt.provider.sourceRef !== process.env.PROVIDER_HEAD) throw new Error('provider source-ref lineage mismatch');
+          if (receipt.provider.sourceRefBinding !== 'CALLER_DECLARED_NOT_VERIFIED_BY_ADAPTER') throw new Error('source-ref truth boundary drifted');
+          if (receipt.truthBoundary.artifactSha256VerifiedBeforeExecution !== true) throw new Error('artifact pre-execution digest proof missing');
+          if (receipt.truthBoundary.selfVerificationAuthenticatesProducer !== false) throw new Error('self-verification authorship boundary drifted');
+          if (receipt.observation.providerReceiptCommitted !== false) throw new Error('uncommitted provider boundary drifted');
+          if (receipt.authority.kind !== 'RUNTIME_EVIDENCE_ONLY' || receipt.authority.automaticExecution !== false || receipt.authority.merge !== false || receipt.authority.canon !== false) {
+            throw new Error('consumer authority boundary drifted');
+          }
+          console.log(JSON.stringify({
+            receiptSha256: verified.receiptSha256,
+            artifactSha256: verified.artifactSha256,
+            providerReceiptHash: verified.providerReceiptHash,
+            providerHead: receipt.provider.sourceRef,
+            authority: verified.authority
+          }));
+          NODE
+
+      - name: Upload interoperability receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: causal-loop-portable-runtime-${{ matrix.node-version }}-py${{ matrix.python-version }}
+          path: ${{ runner.temp }}/parallel-causal-loop-portable-observation.json
+          if-no-files-found: error
+          retention-days: 14
