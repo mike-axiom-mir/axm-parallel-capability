@@ -255,6 +255,35 @@ test('execution evidence fails closed after materialization claim drift', async 
   assert.throws(() => verifyIgnitionExecutionEvidence(tampered), /receiptSha256 mismatch/);
 });
 
+test('execution evidence fails closed when detached from the returned clone output', async () => {
+  const registry = fixtureRegistry();
+  const tally = counters();
+  bindIgnitionExecutorSet(registry, { ignition: fakeIgnition(), bindings: [binding('alpha', tally), binding('beta', tally)] });
+  const result = await runRegisteredCreation(registry, {
+    bodyMapId: 'demo-body',
+    runId: 'ignition-output-binding',
+    state: { config: { alpha: false, beta: false } },
+    stateRef: 'body:v1',
+    rollbackRef: 'body:v0',
+    goal: {
+      id: 'enable-alpha',
+      requirements: [{ id: 'alpha', token: 'config.alpha' }],
+      integrationTests: [{ id: 'only-alpha', test: ({ state }) => state.config.alpha === true && state.config.beta === false }]
+    },
+    constraints: { resourceBudget: { limits: { workers: 2 } } }
+  });
+  const candidate = result.creation.candidates[0].candidate;
+  const receipt = candidate.metadata.ignitionExecution;
+  assert.equal(verifyIgnitionExecutionEvidence(receipt, candidate).status, 'PASS');
+
+  const detached = structuredClone(candidate);
+  detached.metadata.runtimeId = 'foreign-runtime';
+  assert.throws(
+    () => verifyIgnitionExecutionEvidence(receipt, detached),
+    /work output SHA-256 mismatch/
+  );
+});
+
 test('reserved evidence namespace cannot be silently overwritten by a wrapped executor', async () => {
   const registry = fixtureRegistry();
   const tally = counters();
