@@ -175,7 +175,7 @@ function compareClaims(previousClaims, nextClaims) {
     return {
       claimId,
       capabilityId: after?.capabilityId ?? before?.capabilityId ?? null,
-      change: before == null ? 'ADDED' : (after == null ? 'REMOVED' : (previousStatus === nextStatus ? 'UNCHANGED' : 'CHANGED')),
+      change: before == null ? 'ADDED' : (after == null ? 'REMOVED' : (stableStringify(before) === stableStringify(after) ? 'UNCHANGED' : 'CHANGED')),
       transition: `${previousStatus ?? '<missing>'}->${nextStatus ?? '<missing>'}`,
       previousStatus,
       nextStatus,
