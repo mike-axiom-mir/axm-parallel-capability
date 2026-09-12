@@ -1,0 +1,64 @@
+name: MergeAgent final governance and front door
+
+on:
+  push:
+    branches:
+      - integration/final-governance-frontdoor-20260912
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.event.head_commit.message != 'MergeAgent reconcile final governance and front door'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/final-governance-frontdoor-20260912
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Reconcile active governance and README truth
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          agents = Path('AGENTS.md')
+          text = agents.read_text('utf-8')
+          section = '''## Constitutional merge gate\n\nFor AXM-internal work, the constitutional merge gate is the four roots:\n\n- **Truth** — claims, evidence, uncertainty, failures, and provenance must remain honest.\n- **Agency / non-domination** — capability must not silently become control over another actor or user.\n- **Continuity** — improvements preserve source identity, lineage, rollback, and explainable state change rather than silently replacing the body.\n- **Wisdom before speed** — passing CI or having technical permission is not by itself a reason to promote a change.\n\nHumans, machine intelligences, lanes, maintainers, and technical accounts are evaluated by grounded behavior against these roots rather than by category. GitHub write/merge permission is **technical execution capability, not CANON authority**. Product-level human gates may still exist where a product or current user explicitly defines them, but they are not the constitutional AXM merge gate.\n\nA successful test or merge proves only its stated predicates. It must not be silently upgraded into a broader CANON claim.\n\n'''
+          marker = '## Authority model\n'
+          if '## Constitutional merge gate\n' not in text:
+              if marker not in text:
+                  raise SystemExit('AGENTS authority marker missing')
+              text = text.replace(marker, section + marker, 1)
+          agents.write_text(text, 'utf-8')
+
+          readme = Path('README.md')
+          text = readme.read_text('utf-8')
+          text = text.replace('- persistent checkpoint storage;\n', '')
+          text = text.replace(
+              '- Discovery Buddy scanner promotion before its real source tree materializes and passes required verification;\n',
+              '- automatic promotion of discovery declarations into executable runtime providers; discovery remains proposal-only until a provider is explicitly bound and runtime-observed;\n'
+          )
+          consolidated = '''### Consolidated capabilities promoted through evidence — 2026-09-12\n\nThe later growth lanes have now been integrated into `main` in dependency order. Their claims remain bounded to the recorded contracts and tests:\n\n- protected-body adoption can require the exact canonical source-state content expected by the plan;\n- checkpoint v0.2 state can be persisted locally by exact content identity and recovered across a fresh process without a mutable `latest` alias;\n- outputs completed after cancellation remain retained evidence but are quarantined from reusable checkpoint state;\n- checkpoint reads require the store's exact canonical bytes, rejecting alternate/ambiguous JSON encodings;\n- configured checkpoint roots and stable pre-existing symlinked ancestor components are rejected on the tested Linux/Node path; this is **not** descriptor-bound `openat` confinement or hostile-filesystem race proof;\n- a display-only checkpoint recovery desk can explain an explicitly named admitted checkpoint without choosing, applying, or resuming it;\n- merge receipts and receipt-linked rollback tokens have deterministic content identity, exact supported envelopes, and lineage checks; hash identity is not producer authentication;\n- evidence refresh detects supporting-record drift even when a claim status label remains unchanged;\n- Discovery Buddy indexes can enter planning as declaration-only evidence with no automatic execution authority;\n- the Creation Fabric run observer renders existing receipt truth without gaining merge/commit authority;\n- Causal Loop can be runtime-observed through an explicitly supplied local source provider and through a caller-pinned deterministic `.pyz`; neither path auto-discovers, installs, or promotes a provider;\n- selected Parallel executors can be realized through an explicitly supplied optional Ignition provider, including a real Theme Park headless runtime proof; execution evidence is bound to the returned clone candidate and protected-state mutation remains behind the explicit commit gate.\n\nThese integrations strengthen evidence, portability, persistence, and realization. They do **not** create automatic CANON, hidden provider execution, hostile-code sandboxing, signed authorship, or unrestricted merge authority.\n\n'''
+          marker = '### Still proposal / not yet proven here\n'
+          if '### Consolidated capabilities promoted through evidence — 2026-09-12\n' not in text:
+              if marker not in text:
+                  raise SystemExit('README proposal marker missing')
+              text = text.replace(marker, consolidated + marker, 1)
+          readme.write_text(text, 'utf-8')
+          PY
+
+          git diff --check
+          git diff -- AGENTS.md README.md
+      - name: Run repository verification
+        run: npm test
+      - name: Commit reconciliation
+        run: |
+          git config user.name 'AXM MergeAgent'
+          git config user.email 'actions@users.noreply.github.com'
+          git add AGENTS.md README.md
+          git commit -m 'MergeAgent reconcile final governance and front door'
+          git push origin HEAD:integration/final-governance-frontdoor-20260912
