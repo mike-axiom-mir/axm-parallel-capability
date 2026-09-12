@@ -4,7 +4,10 @@
   "description": "Deterministic bounded capability lanes with evidence refresh/reverification, read-only GitHub evidence collection, external-source verification, registry intake, decomposition, evidence-bound merge, clone-body integration, and scheduler-native creation cycles for AXM systems",
   "type": "module",
   "main": "src/index.js",
-  "exports": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./discovery-index": "./src/discovery-index.js"
+  },
   "scripts": {
     "test": "node --test",
     "demo:calculation": "node examples/parallel-calculation.js",

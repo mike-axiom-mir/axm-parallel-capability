@@ -1,0 +1,70 @@
+name: Discovery index consumer contract
+
+on:
+  pull_request:
+    paths:
+      - 'src/discovery-index.js'
+      - 'test/discovery-index.test.js'
+      - 'tools/discovery-index-smoke.js'
+      - 'docs/DISCOVERY_INDEX_CONSUMER_V0_1.md'
+      - 'package.json'
+      - '.github/workflows/discovery-index-consumer.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/discovery-index.js'
+      - 'test/discovery-index.test.js'
+      - 'tools/discovery-index-smoke.js'
+      - 'docs/DISCOVERY_INDEX_CONSUMER_V0_1.md'
+      - 'package.json'
+      - '.github/workflows/discovery-index-consumer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  adapter-and-cross-repo-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Parallel Capability Fabric
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Focused adapter tests
+        run: node --test test/discovery-index.test.js
+
+      - name: Full repository regression suite
+        run: npm test
+
+      - name: Checkout pinned Discovery Buddy scanner
+        uses: actions/checkout@v4
+        with:
+          repository: mike-axiom-mir/axm-discovery-buddy
+          ref: 1a94fc2481d1cfc9234dea7c86af4777126d3924
+          path: external/discovery-buddy
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build disposable provider and consumer repositories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/axm-discovery-fixture/provider/registry
+          mkdir -p /tmp/axm-discovery-fixture/consumer/registry
+          git init -q /tmp/axm-discovery-fixture/provider
+          git init -q /tmp/axm-discovery-fixture/consumer
+          printf '%s\n' '{"id":"axm.test.shared","providers":["fixture-provider"],"consumers":[],"status":"IMPLEMENTED_REFERENCE"}' > /tmp/axm-discovery-fixture/provider/registry/capabilities.jsonl
+          printf '%s\n' '{"id":"axm.test.shared","providers":[],"consumers":["fixture-consumer"],"status":"DECLARED"}' > /tmp/axm-discovery-fixture/consumer/registry/capabilities.jsonl
+
+      - name: Generate index with real Discovery Buddy scanner
+        run: PYTHONPATH=external/discovery-buddy python -m discovery_buddy scan /tmp/axm-discovery-fixture --output-dir /tmp/axm-discovery-output
+
+      - name: Consume scanner output without granting execution authority
+        run: node tools/discovery-index-smoke.js /tmp/axm-discovery-output/local-discovery.json axm.test.shared fixture-provider
