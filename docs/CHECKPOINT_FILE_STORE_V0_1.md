@@ -1,0 +1,72 @@
+# Local Checkpoint File Store v0.1
+
+Status: **EXPERIMENTAL / HOLD for human review**.
+
+This is a bounded persistence adapter for the scheduler checkpoint contract introduced by the checkpoint v0.2 lane. It does not create a second scheduler truth and it does not grant merge, promotion, deployment, or CANON authority.
+
+## State boundary
+
+Authoritative resume truth remains the existing `axm.parallel-capability-checkpoint/v0.2` object plus the scheduler's own admission checks.
+
+The file store is only a durable local realization of that object:
+
+`validated checkpoint v0.2 -> content-addressed local file -> load exact checkpoint id -> scheduler revalidates on resume`
+
+The store never chooses a checkpoint for the caller. There is no mutable `latest` pointer and no last-writer-wins alias. A caller must supply the exact `parallel-checkpoint:sha256:<64 hex>` identity it intends to load.
+
+## Write contract
+
+`LocalCheckpointFileStore.put(checkpoint)`:
+
+1. requires strict portable JSON values;
+2. requires checkpoint schema v0.2;
+3. recomputes the existing checkpoint SHA-256 before any write;
+4. enforces a caller-configurable byte ceiling (8 MiB default);
+5. writes canonical bytes to a private temporary file in the target directory;
+6. fsyncs that file;
+7. publishes it under its content hash with an atomic create-only hard link;
+8. removes the temporary name;
+9. attempts to fsync the directory and reports whether that durability step was available.
+
+The final filename is derived only from the validated lowercase SHA-256 hex. Path-like caller input therefore never becomes a filesystem path.
+
+If the exact final checkpoint already exists, it is re-read and reverified. A valid identical checkpoint is idempotent (`EXISTS`). A corrupt existing target fails closed and is **not** silently replaced or healed.
+
+Different valid checkpoint identities coexist, so concurrent actors do not overwrite each other through a shared mutable name.
+
+## Read contract
+
+`get(checkpointId)` reads only the exact content-addressed final filename. It rejects non-regular targets, oversized bytes, invalid JSON, unsupported schema, content/hash mismatch, and requested/stored identity mismatch.
+
+Abandoned temporary files are not candidates for resume and are ignored by exact-id reads. The scheduler still performs its existing run/state/checkpoint/spec/receipt-lineage validation when the loaded object is supplied to `start(..., { checkpoint })`.
+
+## Storage receipt
+
+A successful `put` returns `axm.parallel-capability-checkpoint-store-receipt/v0.1` with:
+
+- `STORED` or idempotent `EXISTS` status;
+- exact checkpoint identity and stored byte count;
+- the content-addressed filename;
+- `authority: STORAGE_ONLY`;
+- file-fsync and directory-fsync evidence.
+
+The receipt is operational evidence, not canonical scheduler state.
+
+## Deliberate limits
+
+This v0.1 adapter is local filesystem storage only. It does not provide:
+
+- hostile-writer exclusion or cryptographic author authentication;
+- distributed consensus, shared-network storage, cloud backup, or account sync;
+- automatic checkpoint discovery or `latest` selection;
+- garbage collection or retention policy;
+- repair of corrupt final files;
+- cleanup guarantees for abandoned temp names after abrupt process exit;
+- a package-root export while the repository's package/index surfaces are occupied by other active lanes;
+- proof of power-loss durability on filesystems where directory fsync is unavailable.
+
+The current implementation uses a same-directory hard-link publish step. Portability beyond the tested Linux/Node environment remains unproven.
+
+## Dependency
+
+This lane must remain stacked on the exact checkpoint v0.2 head that supplies plan/content-bound scheduler checkpoints. Persisting the older v0.1 checkpoint contract would make stale resume state durable, so legacy checkpoint persistence is intentionally refused rather than migrated by this adapter.
