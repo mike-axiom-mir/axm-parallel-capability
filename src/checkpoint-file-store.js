@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, open, readFile, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, parse, resolve, sep } from 'node:path';
 
 const CHECKPOINT_SCHEMA = 'axm.parallel-capability-checkpoint/v0.2';
 const CHECKPOINT_ID_RE = /^parallel-checkpoint:sha256:([0-9a-f]{64})$/;
@@ -164,25 +164,37 @@ function checkpointIdHex(checkpointId) {
 }
 
 async function prepareStoreRoot(root) {
-  try {
-    await assertSafeStoreRoot(root);
-    return;
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
+  const exists = await assertSafeStoreRoot(root, { allowMissingTail: true });
+  if (exists) return;
 
   await mkdir(root, { recursive: true });
   await assertSafeStoreRoot(root);
 }
 
-async function assertSafeStoreRoot(root) {
-  const info = await lstat(root);
-  if (info.isSymbolicLink()) {
-    throw unsafeStoreRootError(root, 'symbolic links are forbidden');
+async function assertSafeStoreRoot(root, { allowMissingTail = false } = {}) {
+  const { root: pathRoot } = parse(root);
+  const remainder = root.slice(pathRoot.length);
+  const components = remainder.split(sep).filter(Boolean);
+  let current = pathRoot;
+
+  for (const component of components) {
+    current = join(current, component);
+    let info;
+    try {
+      info = await lstat(current);
+    } catch (error) {
+      if (allowMissingTail && error?.code === 'ENOENT') return false;
+      throw error;
+    }
+    if (info.isSymbolicLink()) {
+      throw unsafeStoreRootError(root, `symbolic links are forbidden in the configured path (${current})`);
+    }
+    if (!info.isDirectory()) {
+      throw unsafeStoreRootError(root, `expected every configured path component to be a directory (${current})`);
+    }
   }
-  if (!info.isDirectory()) {
-    throw unsafeStoreRootError(root, 'expected a directory');
-  }
+
+  return true;
 }
 
 function unsafeStoreRootError(root, reason) {

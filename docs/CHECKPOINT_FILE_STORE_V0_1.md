@@ -22,16 +22,17 @@ The store never chooses a checkpoint for the caller. There is no mutable `latest
 2. requires checkpoint schema v0.2;
 3. recomputes the existing checkpoint SHA-256 before any write;
 4. enforces a caller-configurable byte ceiling (8 MiB default);
-5. requires the configured store root itself to be a real directory rather than a symbolic link;
-6. writes canonical bytes to a private temporary file in the target directory;
-7. fsyncs that file;
-8. publishes it under its content hash with an atomic create-only hard link;
-9. removes the temporary name;
-10. attempts to fsync the directory and reports whether that durability step was available.
+5. requires every existing component of the configured store-root path to be a real directory rather than a symbolic link;
+6. when the store-root tail is missing, validates the existing prefix before recursive creation and revalidates the complete created path before writing;
+7. writes canonical bytes to a private temporary file in the target directory;
+8. fsyncs that file;
+9. publishes it under its content hash with an atomic create-only hard link;
+10. removes the temporary name;
+11. attempts to fsync the directory and reports whether that durability step was available.
 
 The final filename is derived only from the validated lowercase SHA-256 hex. Path-like caller input therefore never becomes a filesystem path.
 
-A pre-existing symbolic link at the configured root path is rejected with `AXM_CHECKPOINT_STORE_ROOT_UNSAFE` before the adapter deliberately opens a checkpoint through that root. This prevents the ordinary configured-root alias case from redirecting checkpoint reads or writes into the symlink target.
+A pre-existing symbolic link at the configured root **or any existing ancestor component used to reach it** is rejected with `AXM_CHECKPOINT_STORE_ROOT_UNSAFE` before the adapter deliberately creates or opens checkpoint storage through that path. This prevents a stable configured-path alias from redirecting checkpoint reads or writes into a different directory while still leaving concurrent hostile path replacement outside this contract.
 
 If the exact final checkpoint already exists, it is re-read and reverified. A valid identical checkpoint is idempotent (`EXISTS`). A corrupt existing target fails closed and is **not** silently replaced or healed.
 
@@ -39,7 +40,7 @@ Different valid checkpoint identities coexist, so concurrent actors do not overw
 
 ## Read contract
 
-`get(checkpointId)` first requires the configured root itself to remain a real directory rather than a symbolic link, then reads only the exact content-addressed final filename. It rejects non-regular targets, oversized bytes, invalid JSON, unsupported schema, content/hash mismatch, requested/stored identity mismatch, and stored bytes that differ from the store's exact canonical UTF-8 JSON plus one LF terminator.
+`get(checkpointId)` first requires every existing component of the configured store-root path to remain a real directory rather than a symbolic link, then reads only the exact content-addressed final filename. It rejects non-regular targets, oversized bytes, invalid JSON, unsupported schema, content/hash mismatch, requested/stored identity mismatch, and stored bytes that differ from the store's exact canonical UTF-8 JSON plus one LF terminator.
 
 Semantically equivalent alternate whitespace/key ordering and duplicate-key JSON are held rather than normalized into trusted checkpoint storage. This binds the local storage representation to the same deterministic byte form produced by `put()`; it does not authenticate who wrote those bytes.
 
@@ -64,7 +65,8 @@ The receipt is operational evidence, not canonical scheduler state.
 This v0.1 adapter is local filesystem storage only. It does not provide:
 
 - hostile-writer exclusion or cryptographic author authentication;
-- ancestor-component no-follow containment, directory-handle/openat-style confinement, or protection against a root being swapped after the explicit root check;
+- directory-handle/openat-style confinement, descriptor-bound traversal, or protection against a validated path component being replaced after its explicit check;
+- a race-proof final checkpoint read if a hostile writer can replace the target between `lstat()` and `readFile()`;
 - distributed consensus, shared-network storage, cloud backup, or account sync;
 - automatic checkpoint discovery or `latest` selection;
 - garbage collection or retention policy;
@@ -73,7 +75,7 @@ This v0.1 adapter is local filesystem storage only. It does not provide:
 - a package-root export while the repository's package/index surfaces are occupied by other active lanes;
 - proof of power-loss durability on filesystems where directory fsync is unavailable.
 
-The current implementation uses a same-directory hard-link publish step. Root-symlink rejection and the rest of this adapter's filesystem behavior are currently evidenced on the tested Linux/Node environment; portability beyond that remains unproven.
+The current implementation uses a same-directory hard-link publish step. Stable configured-path symlink rejection and the rest of this adapter's filesystem behavior are currently evidenced on the tested Linux/Node environment; portability beyond that remains unproven.
 
 ## Dependency
 
