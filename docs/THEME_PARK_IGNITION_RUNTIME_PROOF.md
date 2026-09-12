@@ -61,7 +61,8 @@ The smoke registers two possible Theme Park runtime bindings but requests only o
 - the simulator advances exactly 60 deterministic game minutes;
 - only a bounded summary projection is written to the disposable Parallel clone;
 - the original protected body remains byte-for-byte JSON-equivalent to its starting snapshot;
-- Ignition execution evidence passes the adapter's verifier;
+- Ignition execution evidence passes the adapter's verifier against the exact
+  returned clone candidate, including its state and admitted work-output hashes;
 - the materialized/executed/released capability sets contain exactly the selected Parallel binding;
 - two fresh runs with the same Theme Park seed produce the same bounded Theme Park summary and the same Ignition result hash;
 - the resulting creation reaches `READY_FOR_EXPLICIT_COMMIT`, but this proof never calls the public commit operation.

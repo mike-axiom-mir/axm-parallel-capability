@@ -5,8 +5,9 @@ const PROVIDER_ID = 'axm.ignition.materialization-core';
 const PROVIDER_VERSION = '0.6.0';
 const PROVIDER_RUN_RECEIPT = 'axm.ignition-run/v0.05';
 const BINDING_SCHEMA = 'axm.parallel-capability-ignition-binding/v0.1';
-const EXECUTION_SCHEMA = 'axm.parallel-capability-ignition-execution/v0.1';
+const EXECUTION_SCHEMA = 'axm.parallel-capability-ignition-execution/v0.2';
 const REQUEST_SCHEMA = 'axm.parallel-capability-ignition-request/v0.1';
+const CLONE_CANDIDATE_SCHEMA = 'axm.parallel-capability-clone-candidate/v0.3';
 const AUTHORITY = Object.freeze({
   kind: 'MATERIALIZATION_EVIDENCE_ONLY',
   automaticSelection: false,
@@ -95,7 +96,7 @@ export function bindIgnitionExecutorSet(parallelRegistry, {
   });
 }
 
-export function verifyIgnitionExecutionEvidence(receipt) {
+export function verifyIgnitionExecutionEvidence(receipt, candidate) {
   object(receipt, 'Ignition execution evidence');
   if (receipt.schema !== EXECUTION_SCHEMA) throw new Error(`Unsupported Ignition execution schema: ${receipt.schema ?? '<missing>'}`);
   if (!/^[0-9a-f]{64}$/.test(receipt.receiptSha256 ?? '')) throw new Error('Ignition execution receiptSha256 is invalid');
@@ -111,12 +112,15 @@ export function verifyIgnitionExecutionEvidence(receipt) {
     }
   }
   verifyAuthority(receipt.authority);
+  verifyExecutionCandidate(receipt, candidate);
   return {
     status: 'PASS',
     receiptSha256: receipt.receiptSha256,
     executorRef: receipt.executorRef,
     capabilityId: receipt.capabilityId,
-    resultHash: receipt.resultHash,
+    providerResultHash: receipt.providerResultHash,
+    cloneStateSha256: receipt.cloneStateSha256,
+    workOutputSha256: receipt.workOutputSha256,
     authority: receipt.authority.kind
   };
 }
@@ -175,21 +179,25 @@ function createWrappedWork({ ignition, provider, providerDescriptorSha256, provi
     object(workOutput, `Parallel work output for ${target.executorRef}`);
     if (Array.isArray(workOutput)) throw new TypeError('Parallel work output must not be an array');
 
-    const execution = createExecutionEvidence({
-      provider,
-      providerDescriptorSha256,
-      providerSourceRef,
-      target,
-      request,
-      runReceipt: run.receipt
-    });
-    const evidenceRef = `ignition-execution:sha256:${execution.receiptSha256}`;
     const metadata = workOutput.metadata == null ? {} : workOutput.metadata;
     object(metadata, 'Parallel work output metadata');
     if (Array.isArray(metadata)) throw new TypeError('Parallel work output metadata must not be an array');
     if (Object.prototype.hasOwnProperty.call(metadata, 'ignitionExecution')) {
       throw new Error('metadata.ignitionExecution is reserved by the Ignition adapter');
     }
+
+    const execution = createExecutionEvidence({
+      provider,
+      providerDescriptorSha256,
+      providerSourceRef,
+      target,
+      request,
+      runReceipt: run.receipt,
+      workOutput,
+      metadata,
+      cloneStateSha256: sha256(stableStringify(context.state))
+    });
+    const evidenceRef = `ignition-execution:sha256:${execution.receiptSha256}`;
 
     return {
       ...workOutput,
@@ -202,7 +210,9 @@ function createWrappedWork({ ignition, provider, providerDescriptorSha256, provi
   };
 }
 
-function createExecutionEvidence({ provider, providerDescriptorSha256, providerSourceRef, target, request, runReceipt }) {
+function createExecutionEvidence({ provider, providerDescriptorSha256, providerSourceRef, target, request, runReceipt, workOutput, metadata, cloneStateSha256 }) {
+  const workOutputEvidenceRefs = uniqueStrings(workOutput.evidenceRefs ?? []);
+  const workOutputSha256 = sha256(stableStringify(workOutputProjection(workOutput, metadata)));
   const core = {
     schema: EXECUTION_SCHEMA,
     provider,
@@ -222,10 +232,71 @@ function createExecutionEvidence({ provider, providerDescriptorSha256, providerS
     releasedCapabilityIds: [...runReceipt.releasedCapabilityIds],
     estimatedWorkingSetBytes: runReceipt.estimatedWorkingSetBytes,
     actualMaterializedBytes: runReceipt.actualMaterializedBytes,
-    resultHash: runReceipt.resultHash,
+    providerResultHash: runReceipt.resultHash,
+    cloneStateSha256,
+    workOutputSha256,
+    workOutputEvidenceRefs,
     authority: AUTHORITY
   };
   return { ...core, receiptSha256: sha256(stableStringify(core)) };
+}
+
+function verifyExecutionCandidate(receipt, candidate) {
+  object(candidate, 'Ignition clone candidate');
+  if (Array.isArray(candidate) || candidate.schema !== CLONE_CANDIDATE_SCHEMA) {
+    throw new Error(`Ignition execution requires ${CLONE_CANDIDATE_SCHEMA}`);
+  }
+  object(candidate.metadata, 'Ignition clone candidate metadata');
+  if (Array.isArray(candidate.metadata)) throw new TypeError('Ignition clone candidate metadata must not be an array');
+  const embedded = candidate.metadata.ignitionExecution;
+  if (stableStringify(embedded) !== stableStringify(receipt)) {
+    throw new Error('Ignition execution receipt is not the candidate embedded receipt');
+  }
+  const evidenceRef = `ignition-execution:sha256:${receipt.receiptSha256}`;
+  if (!Array.isArray(candidate.evidenceRefs) || !candidate.evidenceRefs.includes(evidenceRef)) {
+    throw new Error('Ignition execution evidence ref is missing from clone candidate');
+  }
+  if (!Array.isArray(receipt.workOutputEvidenceRefs)
+      || stableStringify(receipt.workOutputEvidenceRefs) !== stableStringify(uniqueStrings(receipt.workOutputEvidenceRefs))) {
+    throw new Error('Ignition execution workOutputEvidenceRefs are invalid');
+  }
+  for (const ref of receipt.workOutputEvidenceRefs) {
+    if (!candidate.evidenceRefs.includes(ref)) throw new Error(`Ignition work output evidence ref is missing from clone candidate: ${ref}`);
+  }
+  object(receipt.request, 'Ignition execution request');
+  for (const [candidateKey, requestKey] of [
+    ['id', 'candidateId'],
+    ['laneId', 'laneId'],
+    ['taskId', 'taskId'],
+    ['stateRef', 'stateRef'],
+    ['sourceStateHash', 'sourceStateHash']
+  ]) {
+    if (candidate[candidateKey] !== receipt.request[requestKey]) {
+      throw new Error(`Ignition clone candidate ${candidateKey} does not match execution request`);
+    }
+  }
+  if (!/^[0-9a-f]{64}$/.test(receipt.cloneStateSha256 ?? '') || candidate.cloneStateHash !== receipt.cloneStateSha256) {
+    throw new Error('Ignition clone state SHA-256 mismatch');
+  }
+  if (!/^[0-9a-f]{64}$/.test(receipt.workOutputSha256 ?? '')) {
+    throw new Error('Ignition execution workOutputSha256 is invalid');
+  }
+  const metadata = { ...candidate.metadata };
+  delete metadata.ignitionExecution;
+  const projected = workOutputProjection(candidate, metadata);
+  if (sha256(stableStringify(projected)) !== receipt.workOutputSha256) {
+    throw new Error('Ignition work output SHA-256 mismatch');
+  }
+}
+
+function workOutputProjection(source, metadata) {
+  return {
+    assumptions: source.assumptions ?? [],
+    contradictions: source.contradictions ?? [],
+    failures: [...(source.failures ?? [])].map(String),
+    metadata,
+    unknowns: source.unknowns ?? []
+  };
 }
 
 function validateProviderRun(run, target) {

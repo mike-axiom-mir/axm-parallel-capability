@@ -86,11 +86,19 @@ the exact provider head before packaging it.
 Every successful wrapped invocation requires the Ignition receipt to show one
 and only one selected capability in all four sets: matched, materialized,
 executed, and released. The adapter then attaches an
-`axm.parallel-capability-ignition-execution/v0.1` receipt to the clone
+`axm.parallel-capability-ignition-execution/v0.2` receipt to the clone
 candidate's metadata/evidence refs. Its deterministic SHA-256 binds the provider
 contract, selected executor/capability identity, Parallel state identity,
-materialized byte count, and provider result hash while omitting provider timing
-observations.
+materialized byte count, resulting clone-state SHA-256, and the admitted work
+output projection while omitting provider timing observations. The provider's
+own result hash remains visible as `providerResultHash`; the adapter does not
+misrepresent that provider-declared value as its independent evidence.
+
+`verifyIgnitionExecutionEvidence(receipt, candidate)` requires the exact clone
+candidate, verifies that it embeds and references the receipt, binds its request
+and resulting state identities, and reconstructs the returned metadata,
+assumptions, unknowns, contradictions, and failures. A detached receipt is not a
+successful verification result.
 
 That evidence means the declared runtime body crossed the reviewed local
 materialization boundary for this invocation. It is not proof of authorship,

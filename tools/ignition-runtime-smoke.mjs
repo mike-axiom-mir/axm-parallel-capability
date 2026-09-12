@@ -111,7 +111,7 @@ assert.deepEqual(counters, {
 assert.deepEqual(result.creation.candidateOrder, ['selected']);
 const candidate = result.creation.candidates[0].candidate;
 const evidence = candidate.metadata.ignitionExecution;
-assert.equal(verifyIgnitionExecutionEvidence(evidence).status, 'PASS');
+assert.equal(verifyIgnitionExecutionEvidence(evidence, candidate).status, 'PASS');
 assert.deepEqual(evidence.materializedCapabilityIds, ['parallel.smoke.selected']);
 assert.deepEqual(evidence.executedCapabilityIds, ['parallel.smoke.selected']);
 assert.deepEqual(evidence.releasedCapabilityIds, ['parallel.smoke.selected']);
@@ -132,5 +132,8 @@ console.log(JSON.stringify({
   creationStatus: result.creation.status,
   commitCalled: false,
   authority: evidence.authority,
+  providerResultHash: evidence.providerResultHash,
+  cloneStateSha256: evidence.cloneStateSha256,
+  workOutputSha256: evidence.workOutputSha256,
   executionReceiptSha256: evidence.receiptSha256
 }, null, 2));
