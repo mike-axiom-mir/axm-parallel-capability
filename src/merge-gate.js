@@ -63,7 +63,8 @@ export function verifyMergeReceipt({
       ['resultingStateRef', rollbackToken.resultingStateRef, receipt.resultingStateRef],
       ['rollbackRef', rollbackToken.rollbackRef, receipt.rollbackRef],
       ['sourceStateHash', rollbackToken.sourceStateHash, receipt.sourceStateHash],
-      ['resultingStateHash', rollbackToken.resultingStateHash, receipt.resultingStateHash]
+      ['resultingStateHash', rollbackToken.resultingStateHash, receipt.resultingStateHash],
+      ['createdAt', rollbackToken.createdAt, receipt.committedAt]
     ];
     for (const [field, tokenValue, receiptValue] of lineageChecks) {
       if (tokenValue !== receiptValue) {
@@ -108,7 +109,11 @@ function assertMergeReceiptIntegrity(receipt) {
   if (!receipt || receipt.schema !== MERGE_RECEIPT_SCHEMA) {
     throw new Error(`Unsupported merge receipt schema: ${receipt?.schema ?? '<missing>'}`);
   }
-  if (typeof receipt.receiptId !== 'string' || !receipt.receiptId.startsWith('merge-receipt:sha256:')) {
+  assertExactFields(receipt, [
+    ...Object.keys(mergeReceiptCore(receipt)),
+    'receiptId'
+  ], 'Merge receipt');
+  if (typeof receipt.receiptId !== 'string' || !/^merge-receipt:sha256:[0-9a-f]{64}$/.test(receipt.receiptId)) {
     throw new Error('Merge receipt identity is missing or malformed');
   }
   const expected = `merge-receipt:sha256:${sha256(stableStringify(mergeReceiptCore(receipt)))}`;
@@ -119,6 +124,11 @@ function assertRollbackIntegrity(token) {
   if (!token || token.schema !== ROLLBACK_TOKEN_SCHEMA) {
     throw new Error(`Unsupported rollback token schema: ${token?.schema ?? '<missing>'}`);
   }
+  assertExactFields(token, [
+    ...Object.keys(rollbackTokenCore(token)),
+    ...(token.mergeReceiptId == null ? ['createdAt'] : []),
+    'tokenId'
+  ], 'Rollback token');
   const expected = `rollback-token:sha256:${sha256(stableStringify(rollbackTokenCore(token)))}`;
   if (token.tokenId !== expected) throw new Error('Rollback token integrity check failed');
 }
@@ -156,8 +166,24 @@ function rollbackTokenCore(token) {
     resultingStateHash: token.resultingStateHash,
     snapshot: token.snapshot
   };
-  if (token.mergeReceiptId != null) core.mergeReceiptId = token.mergeReceiptId;
+  if (token.mergeReceiptId != null) {
+    core.mergeReceiptId = token.mergeReceiptId;
+    core.createdAt = token.createdAt;
+  }
   return core;
+}
+
+function assertExactFields(value, expectedFields, label) {
+  const expected = new Set(expectedFields);
+  const actual = Object.keys(value);
+  const unsupported = actual.filter((field) => !expected.has(field)).sort();
+  const missing = expectedFields.filter((field) => !Object.hasOwn(value, field)).sort();
+  if (unsupported.length > 0) {
+    throw new Error(`${label} contains unsupported fields: ${unsupported.join(', ')}`);
+  }
+  if (missing.length > 0) {
+    throw new Error(`${label} is missing required fields: ${missing.join(', ')}`);
+  }
 }
 
 function sha256(text) {
