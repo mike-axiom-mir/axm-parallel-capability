@@ -148,6 +148,25 @@ These claims are scoped to the Node harness and the documented JSON-state gramma
 
 See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CREATION_FABRIC_CONTRACT_V0_4.md`, `docs/DECOMPOSITION_GRAMMAR_V0_5.md`, `docs/CAPABILITY_REGISTRY_PROTOCOL_V0_6.md`, `docs/EXTERNAL_SOURCE_ADAPTER_V0_7.md`, and `docs/CHECKPOINT_INTEGRITY_CONTRACT_V0_10.md` for narrower contracts and limitations.
 
+### Consolidated capabilities promoted through evidence — 2026-09-12
+
+The later growth lanes have now been integrated into `main` in dependency order. Their claims remain bounded to the recorded contracts and tests:
+
+- protected-body adoption can require the exact canonical source-state content expected by the plan;
+- checkpoint v0.2 state can be persisted locally by exact content identity and recovered across a fresh process without a mutable `latest` alias;
+- outputs completed after cancellation remain retained evidence but are quarantined from reusable checkpoint state;
+- checkpoint reads require the store's exact canonical bytes, rejecting alternate/ambiguous JSON encodings;
+- configured checkpoint roots and stable pre-existing symlinked ancestor components are rejected on the tested Linux/Node path; this is **not** descriptor-bound `openat` confinement or hostile-filesystem race proof;
+- a display-only checkpoint recovery desk can explain an explicitly named admitted checkpoint without choosing, applying, or resuming it;
+- merge receipts and receipt-linked rollback tokens have deterministic content identity, exact supported envelopes, and lineage checks; hash identity is not producer authentication;
+- evidence refresh detects supporting-record drift even when a claim status label remains unchanged;
+- Discovery Buddy indexes can enter planning as declaration-only evidence with no automatic execution authority;
+- the Creation Fabric run observer renders existing receipt truth without gaining merge/commit authority;
+- Causal Loop can be runtime-observed through an explicitly supplied local source provider and through a caller-pinned deterministic `.pyz`; neither path auto-discovers, installs, or promotes a provider;
+- selected Parallel executors can be realized through an explicitly supplied optional Ignition provider, including a real Theme Park headless runtime proof; execution evidence is bound to the returned clone candidate and protected-state mutation remains behind the explicit commit gate.
+
+These integrations strengthen evidence, portability, persistence, and realization. They do **not** create automatic CANON, hidden provider execution, hostile-code sandboxing, signed authorship, or unrestricted merge authority.
+
 ### Still proposal / not yet proven here
 
 - free-text goal parsing into trusted executable requirement tokens;
@@ -156,9 +175,8 @@ See `docs/MERGE_CONTRACT_V0_2.md`, `docs/CLONE_BODY_CONTRACT_V0_3.md`, `docs/CRE
 - cryptographic author authentication or signed capability manifests;
 - automatic verification that a declared `sourceRef` is truthful;
 - arbitrary capability discovery/spawning beyond explicitly supplied registry advertisements;
-- Discovery Buddy scanner promotion before its real source tree materializes and passes required verification;
+- automatic promotion of discovery declarations into executable runtime providers; discovery remains proposal-only until a provider is explicitly bound and runtime-observed;
 - adaptive CPU/disk/event-loop backoff;
-- persistent checkpoint storage;
 - durable external clone/rollback storage;
 - generic source-code / filesystem / database merge adapters;
 - automatic repair of held merge conflicts;

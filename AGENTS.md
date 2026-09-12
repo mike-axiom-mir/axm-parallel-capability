@@ -82,6 +82,19 @@ Parallelism alone is not intelligence.
 
 The useful capability is the coordination grammar around parallel work.
 
+## Constitutional merge gate
+
+For AXM-internal work, the constitutional merge gate is the four roots:
+
+- **Truth** — claims, evidence, uncertainty, failures, and provenance must remain honest.
+- **Agency / non-domination** — capability must not silently become control over another actor or user.
+- **Continuity** — improvements preserve source identity, lineage, rollback, and explainable state change rather than silently replacing the body.
+- **Wisdom before speed** — passing CI or having technical permission is not by itself a reason to promote a change.
+
+Humans, machine intelligences, lanes, maintainers, and technical accounts are evaluated by grounded behavior against these roots rather than by category. GitHub write/merge permission is **technical execution capability, not CANON authority**. Product-level human gates may still exist where a product or current user explicitly defines them, but they are not the constitutional AXM merge gate.
+
+A successful test or merge proves only its stated predicates. It must not be silently upgraded into a broader CANON claim.
+
 ## Authority model
 
 Same body does not mean unlimited authority.
