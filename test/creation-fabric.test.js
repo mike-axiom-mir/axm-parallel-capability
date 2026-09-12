@@ -35,6 +35,7 @@ function makeSpec(state, candidates, overrides = {}) {
     state,
     stateRef: overrides.stateRef ?? 'body:v1',
     rollbackRef: overrides.rollbackRef ?? 'body:v0',
+    checkpointRef: overrides.checkpointRef,
     candidates,
     resourceBudget: overrides.resourceBudget,
     integration: {
@@ -165,7 +166,11 @@ test('creation checkpoint reuse does not rerun completed clone or integration wo
   let runs = 0;
   const spec = makeSpec(protectedBody, [
     candidate('once', ({ state }) => { runs += 1; state.value = 1; })
-  ], { runId: 'creation-checkpoint', stateRef: 'body:checkpoint' });
+  ], {
+    runId: 'creation-checkpoint',
+    stateRef: 'body:checkpoint',
+    checkpointRef: 'creation-checkpoint-plan:v1'
+  });
   const fabric = new CreationFabric({ limits: { workers: 1 } });
 
   const firstSession = fabric.start(spec);

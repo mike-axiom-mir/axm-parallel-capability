@@ -134,6 +134,7 @@ export class CreationFabric {
       goal: normalized.goal,
       stateRef: normalized.stateRef,
       rollbackRef: normalized.rollbackRef,
+      checkpointRef: normalized.checkpointRef,
       resourceBudget: normalized.resourceBudget,
       tasks
     }, { checkpoint });
@@ -328,6 +329,7 @@ function normalizeCreationSpec(spec) {
     goal: String(spec.goal ?? ''),
     stateRef: String(spec.stateRef),
     rollbackRef: String(spec.rollbackRef),
+    checkpointRef: spec.checkpointRef == null ? null : String(spec.checkpointRef),
     resourceBudget: spec.resourceBudget,
     candidates,
     integration: {

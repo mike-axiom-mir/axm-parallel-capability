@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   ParallelCapabilityFabric,
   detectProposedChangeConflicts,
@@ -26,9 +27,22 @@ function makeSpec(tasks, overrides = {}) {
     goal: overrides.goal ?? 'test bounded orchestration',
     stateRef: overrides.stateRef ?? 'state:v1',
     rollbackRef: overrides.rollbackRef ?? 'state:v0',
+    checkpointRef: overrides.checkpointRef,
     resourceBudget: overrides.resourceBudget,
     tasks
   };
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
+function resignCheckpoint(checkpoint) {
+  const { checkpointId, ...core } = checkpoint;
+  checkpoint.checkpointId = `parallel-checkpoint:sha256:${createHash('sha256').update(stableStringify(core)).digest('hex')}`;
+  return checkpoint;
 }
 
 test('bounded scheduler uses multiple slots without exceeding worker cap', async () => {
@@ -137,7 +151,7 @@ test('checkpoint reuse skips completed lanes and binds to exact stateRef', async
   const spec = makeSpec([
     { taskId: 'a', run: () => { counts.a += 1; return { output: 'A' }; } },
     { taskId: 'b', dependencies: ['a'], run: () => { counts.b += 1; return { output: 'B' }; } }
-  ], { runId: 'checkpoint-run', stateRef: 'state:exact' });
+  ], { runId: 'checkpoint-run', stateRef: 'state:exact', checkpointRef: 'checkpoint-plan:v1' });
 
   const first = await fabric.start(spec).result;
   assert.deepEqual(counts, { a: 1, b: 1 });
@@ -147,6 +161,85 @@ test('checkpoint reuse skips completed lanes and binds to exact stateRef', async
   assert.equal(resumed.status, 'COMPLETED');
 
   assert.throws(() => fabric.start({ ...spec, stateRef: 'state:stale' }, { checkpoint: first.checkpoint }), /stateRef mismatch/);
+});
+
+test('checkpoint reuse refuses changed task structure under reused run and state labels', async () => {
+  const fabric = new ParallelCapabilityFabric({ limits: { workers: 1 } });
+  const spec = makeSpec([
+    { taskId: 'a', capabilityId: 'cap:a', inputRefs: ['input:v1'], run: () => ({ output: 'A' }) }
+  ], { runId: 'checkpoint-structure', stateRef: 'state:same', checkpointRef: 'implementation:v1' });
+  const first = await fabric.start(spec).result;
+  const changed = {
+    ...spec,
+    tasks: [{ ...spec.tasks[0], inputRefs: ['input:v2'] }]
+  };
+
+  assert.throws(
+    () => fabric.start(changed, { checkpoint: first.checkpoint }),
+    /spec fingerprint mismatch/
+  );
+});
+
+test('checkpoint reuse requires an explicit implementation revision ref', async () => {
+  const fabric = new ParallelCapabilityFabric({ limits: { workers: 1 } });
+  const spec = makeSpec([
+    { taskId: 'a', run: () => ({ output: 'A' }) }
+  ], { runId: 'checkpoint-no-ref', stateRef: 'state:same' });
+  const first = await fabric.start(spec).result;
+
+  assert.throws(
+    () => fabric.start(spec, { checkpoint: first.checkpoint }),
+    /requires an explicit checkpointRef/
+  );
+});
+
+test('checkpoint integrity binds restored outputs and receipts', async () => {
+  const fabric = new ParallelCapabilityFabric({ limits: { workers: 1 } });
+  const spec = makeSpec([
+    { taskId: 'a', run: () => ({ output: 'A' }) }
+  ], { runId: 'checkpoint-integrity', stateRef: 'state:same', checkpointRef: 'implementation:v1' });
+  const first = await fabric.start(spec).result;
+  const tampered = structuredClone(first.checkpoint);
+  tampered.completed[0].output = 'TAMPERED';
+
+  assert.throws(
+    () => fabric.start(spec, { checkpoint: tampered }),
+    /Checkpoint integrity mismatch/
+  );
+});
+
+test('checkpoint receipt lineage is checked after content integrity', async () => {
+  const fabric = new ParallelCapabilityFabric({ limits: { workers: 1 } });
+  const spec = makeSpec([
+    { taskId: 'a', run: () => ({ output: 'A' }) }
+  ], { runId: 'checkpoint-lineage', stateRef: 'state:same', checkpointRef: 'implementation:v1' });
+  const first = await fabric.start(spec).result;
+  const forged = structuredClone(first.checkpoint);
+  forged.completed[0].receipt.taskId = 'other-task';
+  resignCheckpoint(forged);
+
+  assert.throws(
+    () => fabric.start(spec, { checkpoint: forged }),
+    /receipt lineage mismatch/
+  );
+});
+
+test('legacy v0.1 checkpoints fail closed instead of receiving invented plan identity', () => {
+  const fabric = new ParallelCapabilityFabric({ limits: { workers: 1 } });
+  const spec = makeSpec([
+    { taskId: 'a', run: () => ({ output: 'A' }) }
+  ], { runId: 'checkpoint-legacy', stateRef: 'state:same', checkpointRef: 'implementation:v1' });
+  const legacy = {
+    schema: 'axm.parallel-capability-checkpoint/v0.1',
+    runId: spec.runId,
+    stateRef: spec.stateRef,
+    completed: []
+  };
+
+  assert.throws(
+    () => fabric.start(spec, { checkpoint: legacy }),
+    /Legacy checkpoint v0.1/
+  );
 });
 
 test('failed dependency blocks dependent lane while independent lane survives', async () => {

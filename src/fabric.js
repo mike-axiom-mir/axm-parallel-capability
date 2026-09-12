@@ -1,4 +1,8 @@
+import { createHash } from 'node:crypto';
+
 const DEFAULT_LIMITS = Object.freeze({ workers: 4 });
+const CHECKPOINT_SCHEMA = 'axm.parallel-capability-checkpoint/v0.2';
+const LEGACY_CHECKPOINT_SCHEMA = 'axm.parallel-capability-checkpoint/v0.1';
 
 export class ParallelCapabilityFabric {
   constructor({ limits = {}, now = () => new Date().toISOString() } = {}) {
@@ -15,6 +19,7 @@ export class ParallelCapabilityFabric {
 class RunSession {
   constructor({ spec, checkpoint, fabricLimits, now }) {
     this.spec = normalizeSpec(spec, fabricLimits);
+    this.specFingerprint = fingerprintSpec(this.spec);
     this.now = now;
     this.tasks = this.spec.tasks;
     this.taskById = new Map(this.tasks.map((task) => [task.taskId, task]));
@@ -74,18 +79,26 @@ class RunSession {
         receipt: cloneJsonValue(this.receipts.get(task.taskId))
       }));
 
-    return {
-      schema: 'axm.parallel-capability-checkpoint/v0.1',
+    const core = {
+      schema: CHECKPOINT_SCHEMA,
       runId: this.spec.runId,
       stateRef: this.spec.stateRef,
+      checkpointRef: this.spec.checkpointRef,
+      specFingerprint: this.specFingerprint,
       createdAt: this.now(),
       completed
+    };
+    return {
+      ...core,
+      checkpointId: `parallel-checkpoint:sha256:${sha256(stableStringify(core))}`
     };
   }
 
   snapshot() {
     return {
       runId: this.spec.runId,
+      checkpointRef: this.spec.checkpointRef,
+      specFingerprint: this.specFingerprint,
       paused: this.paused,
       cancelled: this.cancelled,
       active: [...this.active.keys()].sort((a, b) => this.indexById.get(a) - this.indexById.get(b)),
@@ -96,8 +109,19 @@ class RunSession {
 
   _applyCheckpoint(checkpoint) {
     if (!checkpoint) return;
-    if (checkpoint.schema !== 'axm.parallel-capability-checkpoint/v0.1') {
+    if (typeof checkpoint !== 'object' || Array.isArray(checkpoint)) {
+      throw new TypeError('checkpoint must be an object');
+    }
+    if (checkpoint.schema === LEGACY_CHECKPOINT_SCHEMA) {
+      throw new Error('Legacy checkpoint v0.1 has no plan/content binding; rerun once to issue a v0.2 checkpoint');
+    }
+    if (checkpoint.schema !== CHECKPOINT_SCHEMA) {
       throw new Error(`Unsupported checkpoint schema: ${checkpoint.schema ?? '<missing>'}`);
+    }
+    const { checkpointId, ...checkpointCore } = checkpoint;
+    const expectedCheckpointId = `parallel-checkpoint:sha256:${sha256(stableStringify(checkpointCore))}`;
+    if (checkpointId !== expectedCheckpointId) {
+      throw new Error('Checkpoint integrity mismatch');
     }
     if (checkpoint.runId !== this.spec.runId) {
       throw new Error(`Checkpoint runId mismatch: ${checkpoint.runId} !== ${this.spec.runId}`);
@@ -105,10 +129,38 @@ class RunSession {
     if (checkpoint.stateRef !== this.spec.stateRef) {
       throw new Error(`Checkpoint stateRef mismatch: ${checkpoint.stateRef} !== ${this.spec.stateRef}`);
     }
+    if (this.spec.checkpointRef == null) {
+      throw new Error('Checkpoint reuse requires an explicit checkpointRef in the run spec');
+    }
+    if (checkpoint.checkpointRef !== this.spec.checkpointRef) {
+      throw new Error(`Checkpoint checkpointRef mismatch: ${checkpoint.checkpointRef ?? '<missing>'} !== ${this.spec.checkpointRef}`);
+    }
+    if (checkpoint.specFingerprint !== this.specFingerprint) {
+      throw new Error(`Checkpoint spec fingerprint mismatch: ${checkpoint.specFingerprint ?? '<missing>'} !== ${this.specFingerprint}`);
+    }
+    if (!Array.isArray(checkpoint.completed)) {
+      throw new TypeError('checkpoint.completed must be an array');
+    }
 
-    for (const item of checkpoint.completed ?? []) {
-      if (!this.taskById.has(item.taskId)) continue;
-      if (!isReusableState(item.state)) continue;
+    const restored = new Set();
+    for (const item of checkpoint.completed) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new TypeError('checkpoint.completed entries must be objects');
+      }
+      if (!this.taskById.has(item.taskId)) {
+        throw new Error(`Checkpoint references unknown task: ${item.taskId ?? '<missing>'}`);
+      }
+      if (restored.has(item.taskId)) throw new Error(`Checkpoint contains duplicate task: ${item.taskId}`);
+      if (!isReusableState(item.state)) {
+        throw new Error(`Checkpoint task ${item.taskId} has non-reusable state: ${item.state ?? '<missing>'}`);
+      }
+      if (!item.receipt || typeof item.receipt !== 'object' || Array.isArray(item.receipt)) {
+        throw new TypeError(`Checkpoint task ${item.taskId} requires a receipt object`);
+      }
+      if (item.receipt.runId !== this.spec.runId || item.receipt.taskId !== item.taskId || item.receipt.stateRef !== this.spec.stateRef) {
+        throw new Error(`Checkpoint task ${item.taskId} receipt lineage mismatch`);
+      }
+      restored.add(item.taskId);
       this.state.set(item.taskId, item.state);
       this.outputs.set(item.taskId, cloneJsonValue(item.output));
       this.receipts.set(item.taskId, cloneJsonValue(item.receipt));
@@ -205,6 +257,8 @@ class RunSession {
       taskId: task.taskId,
       goal: this.spec.goal,
       stateRef: this.spec.stateRef,
+      checkpointRef: this.spec.checkpointRef,
+      specFingerprint: this.specFingerprint,
       authority: cloneJsonValue(task.authority),
       resources: cloneJsonValue(task.resources),
       dependencyOutputs,
@@ -272,6 +326,8 @@ class RunSession {
       capabilityId: task.capabilityId,
       inputRefs: cloneJsonValue(task.inputRefs),
       stateRef: this.spec.stateRef,
+      checkpointRef: this.spec.checkpointRef,
+      specFingerprint: this.specFingerprint,
       authorityUsed: cloneJsonValue(task.authority),
       declaredResources: cloneJsonValue(task.resources),
       startedAt: null,
@@ -311,6 +367,8 @@ class RunSession {
       goal: this.spec.goal,
       stateRef: this.spec.stateRef,
       rollbackRef: this.spec.rollbackRef,
+      checkpointRef: this.spec.checkpointRef,
+      specFingerprint: this.specFingerprint,
       startedAt: this.startedAt,
       completedAt: this.completedAt,
       status,
@@ -445,9 +503,27 @@ function normalizeSpec(spec, fabricLimits) {
     goal: String(spec.goal ?? ''),
     stateRef: String(spec.stateRef),
     rollbackRef: spec.rollbackRef == null ? null : String(spec.rollbackRef),
+    checkpointRef: spec.checkpointRef == null ? null : String(spec.checkpointRef),
     resourceBudget: { limits },
     tasks
   };
+}
+
+function fingerprintSpec(spec) {
+  const structuralSpec = {
+    runId: spec.runId,
+    goal: spec.goal,
+    stateRef: spec.stateRef,
+    rollbackRef: spec.rollbackRef,
+    checkpointRef: spec.checkpointRef,
+    resourceBudget: spec.resourceBudget,
+    tasks: spec.tasks.map(({ run, ...task }) => task)
+  };
+  return `parallel-spec:sha256:${sha256(stableStringify(structuralSpec))}`;
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function normalizeLaneResult(rawResult) {
