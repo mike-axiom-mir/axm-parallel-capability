@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./discovery-index": "./src/discovery-index.js"
+    "./discovery-index": "./src/discovery-index.js",
+    "./ignition-runtime": "./src/ignition-runtime.js"
   },
   "scripts": {
     "test": "node --test",

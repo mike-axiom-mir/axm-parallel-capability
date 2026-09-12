@@ -1,0 +1,144 @@
+name: Theme Park runtime through Ignition
+
+on:
+  push:
+    branches: ['chat/**']
+    paths:
+      - 'src/ignition-runtime.js'
+      - 'test/ignition-runtime.test.js'
+      - 'tools/theme-park-ignition-runtime-smoke.mjs'
+      - 'docs/THEME_PARK_IGNITION_RUNTIME_PROOF.md'
+      - '.github/workflows/theme-park-ignition-runtime.yml'
+      - 'package.json'
+  pull_request:
+    paths:
+      - 'src/ignition-runtime.js'
+      - 'test/ignition-runtime.test.js'
+      - 'tools/theme-park-ignition-runtime-smoke.mjs'
+      - 'docs/THEME_PARK_IGNITION_RUNTIME_PROOF.md'
+      - '.github/workflows/theme-park-ignition-runtime.yml'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+env:
+  IGNITION_REF: 6defd4182a41fa226b4d8352d9186d5431634573
+  THEME_PARK_REF: e30b0859b3d570b67d10c10eb1bed1e2441eb612
+
+jobs:
+  parallel-regression:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Run complete Parallel suite
+        run: npm test
+      - name: Pack exact consumer branch
+        run: |
+          mkdir -p "$RUNNER_TEMP/parallel-package"
+          npm pack --silent --pack-destination "$RUNNER_TEMP/parallel-package"
+          test "$(find "$RUNNER_TEMP/parallel-package" -maxdepth 1 -name '*.tgz' | wc -l)" -eq 1
+
+  real-theme-park-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Parallel exact PR head
+        uses: actions/checkout@v4
+        with:
+          path: parallel
+      - name: Check out pinned Ignition provider
+        uses: actions/checkout@v4
+        with:
+          repository: mike-axiom-mir/axm-ignition-fabric
+          ref: ${{ env.IGNITION_REF }}
+          path: ignition
+      - name: Check out pinned Theme Park provider
+        uses: actions/checkout@v4
+        with:
+          repository: mike-axiom-mir/axm-theme-park-simulator
+          ref: ${{ env.THEME_PARK_REF }}
+          path: theme-park
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify exact provider heads
+        shell: bash
+        run: |
+          test "$(git -C ignition rev-parse HEAD)" = "$IGNITION_REF"
+          test "$(git -C theme-park rev-parse HEAD)" = "$THEME_PARK_REF"
+      - name: Run Ignition provider tests
+        working-directory: ignition
+        run: npm test
+      - name: Run Theme Park headless provider tests
+        working-directory: theme-park
+        run: npm run test:headless
+      - name: Pack all three local packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG_DIR="$RUNNER_TEMP/axm-runtime-packages"
+          mkdir -p "$PKG_DIR"
+          (cd parallel && npm pack --silent --pack-destination "$PKG_DIR")
+          (cd ignition && npm pack --silent --pack-destination "$PKG_DIR")
+          (cd theme-park && npm pack --silent --pack-destination "$PKG_DIR")
+          test "$(find "$PKG_DIR" -maxdepth 1 -name '*.tgz' | wc -l)" -eq 3
+          ls -la "$PKG_DIR"
+      - name: Install only packed local providers into clean offline consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONSUMER="$RUNNER_TEMP/theme-park-parallel-consumer"
+          PKG_DIR="$RUNNER_TEMP/axm-runtime-packages"
+          mkdir -p "$CONSUMER"
+          cd "$CONSUMER"
+          npm init -y >/dev/null
+          npm install --offline --ignore-scripts --no-audit --no-fund "$PKG_DIR"/*.tgz
+          node --input-type=module - <<'NODE'
+          import { describeCapability as describeIgnition } from 'axm-ignition-fabric';
+          import { describeCapability as describeThemePark } from 'axm-theme-park-simulator-local';
+          import { bindIgnitionExecutorSet } from '@axm/parallel-capability/ignition-runtime';
+          const ignition = describeIgnition();
+          const park = describeThemePark();
+          if (ignition.id !== 'axm.ignition.materialization-core' || ignition.version !== '0.6.0') throw new Error('unexpected Ignition package contract');
+          if (park.id !== 'axm.theme-park.headless-simulator' || park.version !== '1.0.0') throw new Error('unexpected Theme Park package contract');
+          if (park.runtime?.networkRequired !== false) throw new Error('Theme Park headless package widened network requirements');
+          if (park.authority?.canonical !== false) throw new Error('Theme Park headless package widened canonical authority');
+          if (typeof bindIgnitionExecutorSet !== 'function') throw new Error('Parallel Ignition adapter subpath is unavailable');
+          NODE
+      - name: Execute real package-to-package-to-package proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONSUMER="$RUNNER_TEMP/theme-park-parallel-consumer"
+          cp parallel/tools/theme-park-ignition-runtime-smoke.mjs "$CONSUMER/smoke.mjs"
+          cd "$CONSUMER"
+          IGNITION_SOURCE_REF="$IGNITION_REF" THEME_PARK_SOURCE_REF="$THEME_PARK_REF" node smoke.mjs | tee theme-park-ignition-proof.json
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const proof = JSON.parse(fs.readFileSync('theme-park-ignition-proof.json', 'utf8'));
+          const expectedIgnition = process.env.IGNITION_REF;
+          const expectedThemePark = process.env.THEME_PARK_REF;
+          if (proof.status !== 'PASS') throw new Error('proof did not pass');
+          if (proof.ignitionSourceRef !== expectedIgnition) throw new Error('Ignition source ref drifted');
+          if (proof.themeParkSourceRef !== expectedThemePark) throw new Error('Theme Park source ref drifted');
+          if (proof.themeParkCapability?.id !== 'axm.theme-park.headless-simulator') throw new Error('wrong Theme Park capability');
+          if (proof.themeParkCapability?.version !== '1.0.0') throw new Error('wrong Theme Park capability version');
+          if (proof.themeParkCapability?.networkRequired !== false) throw new Error('network-free contract widened');
+          if (proof.selectedMaterialized !== 1 || proof.idleMaterialized !== 0) throw new Error('selective materialization proof failed');
+          if (proof.selectedReleased !== 1) throw new Error('selected runtime was not released');
+          if (!Number.isSafeInteger(proof.actualMaterializedBytes) || proof.actualMaterializedBytes <= 0) throw new Error('missing real materialization byte evidence');
+          if (!proof.deterministicThemeParkStateHash || !proof.deterministicIgnitionResultHash) throw new Error('deterministic result evidence missing');
+          if (proof.protectedBodyUnchanged !== true || proof.commitCalled !== false) throw new Error('protected boundary widened');
+          if (proof.authority?.kind !== 'MATERIALIZATION_EVIDENCE_ONLY' || proof.authority?.canon !== false) throw new Error('authority contract widened');
+          NODE
+      - name: Upload interoperability receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-park-ignition-runtime-proof
+          path: ${{ runner.temp }}/theme-park-parallel-consumer/theme-park-ignition-proof.json
